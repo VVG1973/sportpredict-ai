@@ -112,11 +112,19 @@ async def run_pipeline():
     published = 0
 
     # 1️⃣ VIP-прогнозы
+    # === СОРТИРОВКА И ЛИМИТ: Топ-5 VIP прогнозов по уверенности ===
+    vip_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
+    logger.info(f"🏆 Отобрано {len(vip_predictions)} VIP прогнозов (Топ-5 по уверенности)")
+
     for pred in vip_predictions:
         if await publisher.publish(pred, is_vip=True, is_single_purchase=False):
             published += 1
 
     # 2️⃣ Обычные прогнозы + персональные уведомления подписчикам команд
+    # === СОРТИРОВКА И ЛИМИТ: Топ-5 обычных прогнозов по уверенности ===
+    regular_predictions = sorted(regular_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
+    logger.info(f"📊 Отобрано {len(regular_predictions)} обычных прогнозов (Топ-5 по уверенности)")
+
     for pred in regular_predictions:
         if await publisher.publish(pred, is_vip=False, is_single_purchase=False):
             published += 1
