@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportPredict AI — Прогнозы на спорт от нейросети</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🤖 SportPredict AI</h1>
+            <p class="subtitle">Прогнозы на спорт от нейросети</p>
+        </header>
+
+        <section class="stats-section">
+            <h2>📊 Общая статистика</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.winrate }}%</div>
+                    <div class="stat-label">Винрейт</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.roi }}%</div>
+                    <div class="stat-label">ROI</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ stats.total }}</div>
+                    <div class="stat-label">Всего прогнозов</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-value">{{ stats.wins }}</div>
+                    <div class="stat-label">Выигрышей</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-value">{{ stats.losses }}</div>
+                    <div class="stat-label">Проигрышей</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-value">{{ stats.pending }}</div>
+                    <div class="stat-label">Ожидают</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="features-section">
+            <h2>🎯 Почему выбирают нас</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🧠</div>
+                    <h3>ML-модель</h3>
+                    <p>Обучена на 22000+ реальных матчах</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎮</div>
+                    <h3>8 видов спорта</h3>
+                    <p>Футбол, теннис, баскетбол, хоккей, CS2, Dota 2, MMA</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <h3>Прозрачность</h3>
+                    <p>Открытая статистика всех прогнозов</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Ежедневно</h3>
+                    <p>Новые прогнозы каждый день в 8:00 МСК</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="predictions-section">
+            <h2>📋 Все прогнозы ({{ total_count }} всего)</h2>
+            
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                    <a href="?page={{ page - 1 }}" class="page-link">← Назад</a>
+                {% endif %}
+                
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                        <span class="page-link active">{{ p }}</span>
+                    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+                        <a href="?page={{ p }}" class="page-link">{{ p }}</a>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                        <span class="page-link">...</span>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page < total_pages %}
+                    <a href="?page={{ page + 1 }}" class="page-link">Вперёд →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <div class="predictions-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Матч</th>
+                            <th>Прогноз</th>
+                            <th>Уверенность</th>
+                            <th>Коэф</th>
+                            <th>Результат</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pred in predictions %}
+                        <tr>
+                            <td>{{ pred.date }}</td>
+                            <td><strong>{{ pred.home_team }}</strong> — {{ pred.away_team }}</td>
+                            <td><strong>{{ pred.prediction }}</strong></td>
+                            <td>{{ pred.confidence }}%</td>
+                            <td>{{ pred.odds }}</td>
+                            <td>
+                                {% if pred.result == 'win' %}
+                                    <span class="result-win">✅ Выигрыш</span>
+                                {% elif pred.result == 'loss' %}
+                                    <span class="result-loss">❌ Проигрыш</span>
+                                {% else %}
+                                    <span class="result-pending">⏳ Ожидает</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">
+                                <em>Пока нет прогнозов. Первые появятся после 8:00 МСК.</em>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if total_pages > 1 %}
+            <div class="pagination" style="margin-top: 20px;">
+                {% if page > 1 %}
+                    <a href="?page={{ page - 1 }}" class="page-link">← Назад</a>
+                {% endif %}
+                
+                <span class="page-info">Страница {{ page }} из {{ total_pages }}</span>
+                
+                {% if page < total_pages %}
+                    <a href="?page={{ page + 1 }}" class="page-link">Вперёд →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="cta-section">
+            <h2>🚀 Начните выигрывать сегодня!</h2>
+            <p>Подпишитесь на наш Telegram-канал и получайте прогнозы первыми</p>
+            <a href="https://t.me/spanalyt_bot" class="cta-button">
+                👑 Открыть Telegram-бот
+            </a>
+        </section>
+
+        <footer class="footer">
+            <p>⚠️ Дисклеймер: Прогнозы носят информационный характер. Ответственная игра. 18+</p>
+            <p>&copy; 2026 SportPredict AI. Все права защищены.</p>
+        </footer>
+    </div>
+</body>
+</html>

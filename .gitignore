@@ -1,0 +1,117 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (too large for GitHub)
+*.pkl
+*.pkl.backup
+*.h5
+*.pth
+*.pt
+*.onnx
+
+# ML training artifacts
+catboost_info/
+wandb/
+mlruns/
+lightning_logs/
+
+# Sensitive data
+payments/
+*.key
+*.pem
+*.secret
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
+
+# Historical data - individual season CSVs (keep only all_matches_clean.csv)
+data/historical/E*.csv
+data/historical/SP*.csv
+data/historical/I*.csv
+data/historical/D*.csv
+data/historical/F*.csv
+data/historical/N*.csv
+data/historical/P*.csv
+data/historical/B*.csv
+data/historical/T*.csv
+data/historical/*_latest.csv
+
+# Historical data - individual season CSVs (keep only all_matches_clean.csv)
+data/historical/E*.csv
+data/historical/SP*.csv
+data/historical/I*.csv
+data/historical/D*.csv
+data/historical/F*.csv
+data/historical/N*.csv
+data/historical/P*.csv
+data/historical/B*.csv
+data/historical/T*.csv
+data/historical/*_latest.csv
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env/
+
+# Data
+data/*.db
+data/models/*.pkl
+
+# Logs
+*.log
+
+# ML Models (слишком большие для GitHub, хранятся в Railway Volume)
+data/models/*.pkl
+data/models/*.pkl.backup
+
+# xG data files (too large for GitHub)
+data/historical/xg/
+data/historical/xg/*.csv
+data/historical/xg/*.json
+*.zip
+*.rar
+*.7z
+backup_*
+data/models/*.pkl
+data/historical/xg/*.csv
+__pycache__/
+*.pyc
+.env
