@@ -598,7 +598,7 @@ async def main():
         logger.warning(f"⚠️ webhook: {e}")
 
     logger.info("🤖 SportPredict AI запущен. Расписание: 8:00 МСК ежедневно.")
-    await dp.start_polling(publisher.bot)
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
