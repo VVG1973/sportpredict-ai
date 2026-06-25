@@ -5,37 +5,75 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, CommandStart
 from database.db import Database
-from telegram_bot.vip_manager import VIPManager
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 db = Database()
-vip_manager = VIPManager()
+
+
+async def extend_user_vip(user_id: int, days: int = 1):
+    """Продлевает VIP пользователю на указанное количество дней"""
+    try:
+        await db.init()
+        
+        # Проверяем, есть ли активная подписка
+        cursor = await db.conn.execute(
+            "SELECT expires_at FROM subscriptions WHERE user_id = ? AND status = 'active'",
+            (user_id,)
+        )
+        row = await cursor.fetchone()
+        
+        if row and row[0]:
+            # Продлеваем существующую подписку
+            current_expires = datetime.fromisoformat(row[0].replace("Z", "+00:00")) if isinstance(row[0], str) else row[0]
+            if current_expires < datetime.now():
+                current_expires = datetime.now()
+            new_expires = current_expires + timedelta(days=days)
+            
+            await db.conn.execute(
+                "UPDATE subscriptions SET expires_at = ? WHERE user_id = ?",
+                (new_expires.isoformat(), user_id)
+            )
+        else:
+            # Создаём новую подписку
+            expires_at = datetime.now() + timedelta(days=days)
+            await db.conn.execute("""
+                INSERT OR REPLACE INTO subscriptions 
+                (user_id, username, plan, status, expires_at)
+                VALUES (?, ?, 'referral', 'active', ?)
+            """, (user_id, f"user_{user_id}", expires_at.isoformat()))
+        
+        await db.conn.commit()
+        logger.info(f"✅ VIP продлён для {user_id} на {days} дней")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка продления VIP: {e}")
+        return False
 
 
 @router.message(CommandStart(deep_link=True))
 async def cmd_start_with_ref(message: Message, command: CommandStart):
     """Обработка старта с реферальной ссылкой"""
     try:
-        # Извлекаем ID рефера из deep link
         args = command.args
         if args and args.startswith('ref_'):
             referrer_id = int(args.replace('ref_', ''))
             new_user_id = message.from_user.id
             new_user_username = message.from_user.username or f"user_{new_user_id}"
             
-            # Проверяем, что пользователь не приглашает сам себя
             if referrer_id != new_user_id:
-                # Проверяем, не был ли этот пользователь уже зарегистрирован
+                await db.init()
                 existing_ref = await db.get_referral_by_user(new_user_id)
+                
                 if not existing_ref:
                     # Регистрируем реферала
                     await db.add_referral(referrer_id, new_user_id, new_user_username)
                     
                     # Даём награду рефереру (1 день VIP)
-                    await vip_manager.extend_vip(referrer_id, days=1)
+                    await extend_user_vip(referrer_id, days=1)
                     
                     # Уведомляем реферера
                     try:
@@ -52,7 +90,7 @@ async def cmd_start_with_ref(message: Message, command: CommandStart):
                     
                     logger.info(f"✅ Реферал: {new_user_username} приглашён пользователем {referrer_id}")
         
-        # Отправляем стандартное приветствие
+        # Отправляем информацию о реферальной программе
         await cmd_referral(message)
         
     except Exception as e:
@@ -67,15 +105,12 @@ async def cmd_referral(message: Message):
         await db.init()
         user_id = message.from_user.id
         
-        # Получаем статистику рефералов
         stats = await db.get_referral_stats(user_id)
         referrals = await db.get_user_referrals(user_id)
         
-        # Формируем реферальную ссылку
         bot_info = await message.bot.get_me()
         ref_link = f"https://t.me/{bot_info.username}?start=ref_{user_id}"
         
-        # Формируем сообщение
         text = f"👥 <b>Реферальная программа</b>\n\n"
         text += f"Приглашайте друзей и получайте <b>VIP бесплатно!</b>\n\n"
         text += f"🔗 <b>Ваша ссылка:</b>\n<code>{ref_link}</code>\n\n"
@@ -85,13 +120,12 @@ async def cmd_referral(message: Message):
         
         if referrals:
             text += f"📋 <b>История приглашений:</b>\n"
-            for ref in referrals[:10]:  # Показываем последние 10
+            for ref in referrals[:10]:
                 text += f"• {ref['username']} ({ref['created_at'][:10]})\n"
         else:
             text += f"📋 <b>История приглашений:</b>\n"
             text += f"<i>Пока никого не пригласили</i>\n"
         
-        # Клавиатура
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="📤 Поделиться ссылкой",
