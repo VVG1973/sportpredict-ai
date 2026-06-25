@@ -2,12 +2,69 @@
 Публикатор прогнозов в Telegram каналы
 """
 import logging
+from datetime import datetime
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from config import settings
-from utils.formatters import to_russian_name, format_datetime_ru
 
 logger = logging.getLogger(__name__)
+
+
+def to_russian_name(name: str) -> str:
+    """Преобразует название команды (простая версия - возвращает как есть)"""
+    # Словарь популярных команд для перевода (можно расширить)
+    translations = {
+        "Manchester United": "Манчестер Юнайтед",
+        "Manchester City": "Манчестер Сити",
+        "Liverpool": "Ливерпуль",
+        "Chelsea": "Челси",
+        "Arsenal": "Арсенал",
+        "Tottenham": "Тоттенхэм",
+        "Real Madrid": "Реал Мадрид",
+        "Barcelona": "Барселона",
+        "Atletico Madrid": "Атлетико Мадрид",
+        "Bayern Munich": "Бавария Мюнхен",
+        "Borussia Dortmund": "Боруссия Дортмунд",
+        "PSG": "ПСЖ",
+        "Juventus": "Ювентус",
+        "AC Milan": "Милан",
+        "Inter Milan": "Интер",
+        "Napoli": "Наполи",
+        "Zenit": "Зенит",
+        "Spartak Moscow": "Спартак Москва",
+        "CSKA Moscow": "ЦСКА Москва",
+        "Lokomotiv Moscow": "Локомотив Москва",
+    }
+    return translations.get(name, name)
+
+
+def format_datetime_ru(date_str: str) -> str:
+    """Форматирует дату в русский формат"""
+    try:
+        if not date_str:
+            return "Дата не указана"
+        
+        # Парсим ISO формат
+        if "T" in date_str:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(date_str)
+        
+        # Русские названия месяцев
+        months = [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря"
+        ]
+        
+        day = dt.day
+        month = months[dt.month - 1]
+        hour = dt.hour
+        minute = dt.minute
+        
+        return f"{day} {month}, {hour:02d}:{minute:02d}"
+    except Exception as e:
+        logger.warning(f"Ошибка форматирования даты '{date_str}': {e}")
+        return date_str[:16].replace("T", " ") if date_str else "Дата не указана"
 
 
 class TelegramPublisher:
@@ -21,7 +78,7 @@ class TelegramPublisher:
         self.vip_channel_id = getattr(settings, 'VIP_CHANNEL_ID', None)
         
         logger.info(f"📢 Обычный канал: {self.channel_id}")
-        logger.info(f"💎 VIP канал: {self.vip_channel_id}")
+        logger.info(f"💎 VIP канал: {self.vip_channel_id or '❌ не настроен'}")
         
         if not self.vip_channel_id:
             logger.warning("⚠️ VIP_CHANNEL_ID не настроен! VIP прогнозы будут идти в обычный канал.")
