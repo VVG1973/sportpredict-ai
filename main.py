@@ -575,6 +575,14 @@ async def main():
     dp = Dispatcher()
     dp.include_router(admin_router)
 
+        # ✅ ПОДКЛЮЧАЕМ ФАВОРИТОВ
+        try:
+            from telegram_bot.favorites import router as favorites_router
+            dp.include_router(favorites_router)
+            logger.info("✅ favorites_router подключён")
+        except ImportError as e:
+            logger.error(f"❌ Не удалось загрузить favorites: {e}")
+
     try:
         await publisher.bot.delete_webhook(drop_pending_updates=True)
     except Exception as e:
