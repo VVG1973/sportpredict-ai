@@ -581,6 +581,14 @@ async def main():
         from telegram_bot.favorites import router as favorites_router
         dp.include_router(favorites_router)
         logger.info("✅ favorites_router подключён")
+
+        # ✅ ПОДКЛЮЧАЕМ РЕФЕРАЛЬНУЮ ПРОГРАММУ
+        try:
+            from telegram_bot.referral_handlers import router as referral_router
+            dp.include_router(referral_router)
+            logger.info("✅ referral_router подключён")
+        except ImportError as e:
+            logger.error(f"❌ Не удалось загрузить referral_handlers: {e}")
     except ImportError as e:
         logger.error(f"❌ Не удалось загрузить favorites: {e}")
 

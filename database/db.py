@@ -91,6 +91,17 @@ class Database:
             )
         """)
         
+
+        # Таблица рефералов
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_id INTEGER NOT NULL,
+                user_id INTEGER UNIQUE NOT NULL,
+                username TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await self.conn.commit()
         logger.info("✅ БД инициализирована")
     
@@ -322,3 +333,54 @@ class Database:
     async def close(self):
         if self.conn:
             await self.conn.close()
+
+    # === РЕФЕРАЛЬНАЯ ПРОГРАММА ===
+    
+    async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
+        """Добавить реферала"""
+        try:
+            await self.conn.execute("""
+                INSERT OR IGNORE INTO referrals (referrer_id, user_id, username, created_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """, (referrer_id, user_id, username))
+            await self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка добавления реферала: {e}")
+            return False
+    
+    async def get_referral_by_user(self, user_id: int):
+        """Получить реферала по user_id"""
+        try:
+            cursor = await self.conn.execute(
+                "SELECT * FROM referrals WHERE user_id = ?", (user_id,)
+            )
+            return await cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Ошибка получения реферала: {e}")
+            return None
+    
+    async def get_user_referrals(self, user_id: int) -> list:
+        """Получить всех рефералов пользователя"""
+        try:
+            cursor = await self.conn.execute(
+                "SELECT username, created_at FROM referrals WHERE referrer_id = ? ORDER BY created_at DESC",
+                (user_id,)
+            )
+            rows = await cursor.fetchall()
+            return [{"username": row[0], "created_at": row[1]} for row in rows]
+        except Exception as e:
+            logger.error(f"Ошибка получения рефералов: {e}")
+            return []
+    
+    async def get_referral_stats(self, user_id: int) -> dict:
+        """Получить статистику рефералов"""
+        try:
+            cursor = await self.conn.execute(
+                "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (user_id,)
+            )
+            total = (await cursor.fetchone())[0]
+            return {"total": total}
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики рефералов: {e}")
+            return {"total": 0}
