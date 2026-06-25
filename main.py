@@ -1,3 +1,4 @@
+# Version: 2.0 - with favorites_router
 import asyncio
 import logging
 import sys
