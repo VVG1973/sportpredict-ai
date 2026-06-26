@@ -1,10 +1,10 @@
 """
 Prediction Model - обёртка для ML модели
-Использует модель с синтетическими xG признаками (точность 59.83%)
+Использует модель с реальными xG признаками (точность 59.01%)
 """
 import logging
-from typing import Dict, Tuple
-from ml_models.synthetic_xg_model import SyntheticXGModel
+from typing import Dict
+from ml_models.real_xg_model import RealXGModel
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class PredictionModel:
     """Основной класс для прогнозирования матчей"""
     
     def __init__(self):
-        self.model = SyntheticXGModel()
+        self.model = RealXGModel()
         self.is_trained = self.model.is_loaded
         self.accuracy = self.model.accuracy
         
@@ -23,15 +23,7 @@ class PredictionModel:
             logger.warning("⚠️ PredictionModel инициализирован без обученной модели")
     
     def predict(self, match_data: Dict) -> Dict:
-        """
-        Делает прогноз для матча
-        
-        Args:
-            match_data: Словарь с данными матча
-        
-        Returns:
-            Dict с прогнозом, уверенностью и вероятностями
-        """
+        """Делает прогноз для матча"""
         prediction, confidence, probabilities = self.model.predict(match_data)
         
         return {
@@ -41,5 +33,4 @@ class PredictionModel:
         }
     
     def get_accuracy(self) -> float:
-        """Возвращает точность модели"""
         return self.accuracy
