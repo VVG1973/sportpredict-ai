@@ -28,7 +28,7 @@ class SyntheticXGModel:
         """Загружает обученную модель из файла"""
         # Пробуем несколько возможных путей
         possible_paths = [
-            Path(self.model_path),
+            self.model_path,
             Path("ml_models/model_synthetic_xg.pkl"),
             Path("/app/ml_models/model_synthetic_xg.pkl"),
             Path("data/models/model_synthetic_xg.pkl"),
@@ -50,21 +50,18 @@ class SyntheticXGModel:
         try:
             with open(loaded_path, "rb") as f:
                 data = pickle.load(f)
-        
-        try:
-            with open(self.model_path, "rb") as f:
-                data = pickle.load(f)
             
-            self.model = data["model"]
-            self.feature_cols = data["feature_cols"]
-            self.accuracy = data["accuracy"]
+            self.model = data.get("model")
+            self.feature_cols = data.get("feature_cols", [])
+            self.accuracy = data.get("accuracy", 0.0)
             self.is_loaded = True
             
-            logger.info(f"✅ Модель загружена: {self.model_path}")
+            logger.info(f"✅ Модель загружена: {loaded_path}")
             logger.info(f"   Точность: {self.accuracy:.2%}")
             logger.info(f"   Признаков: {len(self.feature_cols)}")
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки модели: {e}")
+            self.is_loaded = False
     
     def predict(self, match_data: Dict) -> Tuple[str, float, Dict[str, float]]:
         """
@@ -76,7 +73,7 @@ class SyntheticXGModel:
         Returns:
             Tuple[str, float, Dict]: (прогноз, уверенность, вероятности)
         """
-        if not self.is_loaded:
+        if not self.is_loaded or self.model is None:
             logger.warning("⚠️ Модель не загружена, возвращаю случайный прогноз")
             return "H", 0.33, {"H": 0.33, "D": 0.33, "A": 0.33}
         
@@ -98,7 +95,7 @@ class SyntheticXGModel:
             
             # Маппинг индексов на результаты
             label_map = {0: "H", 1: "D", 2: "A"}
-            prediction = label_map[prediction_idx]
+            prediction = label_map.get(prediction_idx, "H")
             confidence = float(probabilities[prediction_idx])
             
             prob_dict = {
