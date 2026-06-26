@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class SyntheticXGModel:
     """Обёртка для обученной модели с синтетическими xG"""
     
-    def __init__(self, model_path: str = "data/models/model_synthetic_xg.pkl"):
+    def __init__(self, model_path: str = "ml_models/model_synthetic_xg.pkl"):
         self.model_path = Path(model_path)
         self.model = None
         self.feature_cols = None
@@ -26,9 +26,30 @@ class SyntheticXGModel:
     
     def _load_model(self):
         """Загружает обученную модель из файла"""
-        if not self.model_path.exists():
-            logger.error(f"❌ Модель не найдена: {self.model_path}")
+        # Пробуем несколько возможных путей
+        possible_paths = [
+            Path(self.model_path),
+            Path("ml_models/model_synthetic_xg.pkl"),
+            Path("/app/ml_models/model_synthetic_xg.pkl"),
+            Path("data/models/model_synthetic_xg.pkl"),
+        ]
+        
+        loaded_path = None
+        for path in possible_paths:
+            if path.exists():
+                loaded_path = path
+                logger.info(f"✅ Модель найдена: {path}")
+                break
+        
+        if not loaded_path:
+            logger.error(f"❌ Модель не найдена ни в одном из путей:")
+            for p in possible_paths:
+                logger.error(f"   - {p}")
             return
+        
+        try:
+            with open(loaded_path, "rb") as f:
+                data = pickle.load(f)
         
         try:
             with open(self.model_path, "rb") as f:
