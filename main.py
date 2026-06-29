@@ -658,5 +658,22 @@ async def main():
 
 
 
+
+
+# === АВТОМАТИЧЕСКИЙ ТЕСТОВЫЙ ЗАПУСК PIPELINE ===
+async def _auto_run_test():
+    """Запускает run_pipeline через 30 секунд для тестирования"""
+    await asyncio.sleep(30)
+    logger.info("🚀 Автоматический тестовый запуск run_pipeline...")
+    try:
+        await run_pipeline()
+        logger.info("✅ Тестовый запуск успешно завершен! Проверьте каналы.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при тестовом запуске: {e}")
+
+# Запускаем фоновую задачу
+asyncio.create_task(_auto_run_test())
+# ================================================
+
 if __name__ == "__main__":
     asyncio.run(main())
