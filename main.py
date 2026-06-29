@@ -349,16 +349,10 @@ async def run_pipeline():
     if admin_express_details:
         try:
             from config import settings
-            admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>
-
-"
-
+            admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>\n\n"
             for express in admin_express_details:
-                admin_text += f"<b>{express['title']}</b>
-"
-                admin_text += f"━━━━━━━━━━━━━━━━━━━━━
-"
-
+                admin_text += f"<b>{express['title']}</b>\n"
+                admin_text += f"━━━━━━━━━━━━━━━━━━━━━\n"
                 for i, ev in enumerate(express["events"], 1):
                     match = ev.get("match", {})
                     home = match.get("home_team", "?")
@@ -369,35 +363,20 @@ async def run_pipeline():
                     prediction = ev.get("prediction", "?")
                     confidence = ev.get("confidence", 0)
                     odds = ev.get("odds_est", 2.0)
-
                     admin_text += (
-                        f"<b>{i}.</b> {sport} | <i>{league}</i>
-"
-                        f"🏟 <b>{home}</b> — <b>{away}</b>
-"
-                        f"📅 <i>{date_str}</i>
-"
-                        f"🎯 <b>Исход: {prediction}</b>
-"
-                        f"📊 Уверенность: {confidence:.0%}
-"
-                        f"💰 Коэф: {odds}
-
-"
+                        f"<b>{i}.</b> {sport} | <i>{league}</i>\n"
+                        f"🏟 <b>{home}</b> — <b>{away}</b>\n"
+                        f"📅 <i>{date_str}</i>\n"
+                        f"🎯 <b>Исход: {prediction}</b>\n"
+                        f"📊 Уверенность: {confidence:.0%}\n"
+                        f"💰 Коэф: {odds}\n\n"
                     )
-
                 admin_text += (
-                    f"💵 <b>Цена:</b> {express['price']}₽
-"
-                    f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}
-
-"
+                    f"💵 <b>Цена:</b> {express['price']}₽\n"
+                    f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}\n\n"
                 )
-
-            admin_text += "━━━━━━━━━━━━━━━━━━━━━
-"
+            admin_text += "━━━━━━━━━━━━━━━━━━━━━\n"
             admin_text += f"📤 Всего опубликовано экспрессов: {express_published}"
-
             await publisher.bot.send_message(
                 chat_id=settings.ADMIN_ID,
                 text=admin_text,
