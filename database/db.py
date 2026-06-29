@@ -15,6 +15,8 @@ class Database:
     async def init(self):
         """Инициализация соединения и создание всех таблиц"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        import os
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         self.conn = await aiosqlite.connect(self.db_path)
         
         # Таблица прогнозов с колонкой result
