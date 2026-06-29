@@ -7,29 +7,41 @@ import os
 import os
 
 def _get_safe_db_path():
-    """Возвращает безопасный путь к базе данных"""
-    # Приоритет 1: Railway Volume
-    volume_path = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-    if volume_path:
-        db_path = os.path.join(volume_path, "bot.db")
-        print(f"📁 Используем Railway Volume: {db_path}")
-        return db_path
-    
-    # Приоритет 2: Переменная окружения DATABASE_PATH
-    env_path = os.getenv("DATABASE_PATH")
-    if env_path:
-        print(f"📁 Используем DATABASE_PATH: {env_path}")
-        return env_path
-    
-    # Приоритет 3: Папка data в корне проекта
-    data_dir = os.path.join(os.getcwd(), "data")
-    os.makedirs(data_dir, exist_ok=True)
-    db_path = os.path.join(data_dir, "bot.db")
-    print(f"📁 Используем локальную папку: {db_path}")
-    return db_path
+    import os
+    import tempfile
+    from pathlib import Path
 
+    # 1. Пытаемся использовать Railway Volume
+    vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if vol:
+        try:
+            os.makedirs(vol, exist_ok=True)
+            test_file = Path(vol) / ".write_test"
+            test_file.touch(exist_ok=True)
+            test_file.unlink(missing_ok=True)
+            db_path = Path(vol) / "bot.db"
+            print(f"📁 Используем Railway Volume: {db_path}")
+            return str(db_path)
+        except Exception as e:
+            print(f"⚠️ Railway Volume {vol} недоступен для записи ({e}).")
 
+    # 2. Резервный вариант: локальная папка /app/data
+    app_data = Path("/app/data")
+    try:
+        app_data.mkdir(parents=True, exist_ok=True)
+        test_file = app_data / ".write_test"
+        test_file.touch(exist_ok=True)
+        test_file.unlink(missing_ok=True)
+        db_path = app_data / "bot.db"
+        print(f"📁 Используем локальную папку (эфемерную): {db_path}")
+        return str(db_path)
+    except Exception as e:
+        print(f"⚠️ /app/data недоступен ({e}).")
 
+    # 3. Крайний случай: /tmp
+    db_path = Path(tempfile.gettempdir()) / "bot.db"
+    print(f"📁 Используем /tmp (эфемерную): {db_path}")
+    return str(db_path)
 
 class Database:
     def __init__(self, db_path: str = "data/predictions.db"):
