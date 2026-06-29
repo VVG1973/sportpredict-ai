@@ -207,7 +207,7 @@ class Database:
             }
         except Exception as e:
             logger.error(f"Ошибка статистики: {e}")
-            return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0}
+            return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0, "roi": 0.0}
     
     # === ЭКСПРЕССЫ ===
     
@@ -414,6 +414,39 @@ class Database:
             logger.error(f"Ошибка получения рефералов: {e}")
             return []
     
+
+    async def get_user_stats(self, user_id: int):
+        """Получает статистику конкретного пользователя"""
+        try:
+            teams = []
+            follows = 0
+            # Пытаемся получить любимые команды из возможных таблиц
+            for table in ["favorite_teams", "user_teams", "followed_teams"]:
+                for col in ["team_name", "team", "name"]:
+                    try:
+                        cursor = await self.conn.execute(
+                            f"SELECT {col} FROM {table} WHERE user_id = ?", (user_id,)
+                        )
+                        rows = await cursor.fetchall()
+                        if rows:
+                            teams = [row[0] for row in rows]
+                            follows = len(teams)
+                            break
+                    except Exception:
+                        continue
+                if teams:
+                    break
+                    
+            return {
+                "views": 0,
+                "votes": 0,
+                "follows": follows,
+                "teams": teams
+            }
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики пользователя: {e}")
+            return {"views": 0, "votes": 0, "follows": 0, "teams": []}
+
     async def get_referral_stats(self, user_id: int) -> dict:
         """Получить статистику рефералов"""
         try:
