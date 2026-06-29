@@ -65,7 +65,19 @@ class Database:
 
         # ============================
 
-        self.conn = await aiosqlite.connect(_get_safe_db_path())
+        import os as _os
+        _vol = _os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+        _db_path = _os.path.join(_vol, "bot.db") if _vol else "/tmp/bot.db"
+        try:
+            if _os.path.dirname(_db_path):
+                _os.makedirs(_os.path.dirname(_db_path), exist_ok=True)
+            open(_db_path, 'a').close()  # Тестовая запись
+            print(f"📁 Успешно открыли для записи: {_db_path}")
+        except Exception as _e:
+            print(f"⚠️ Ошибка записи в {_db_path}: {_e}. Fallback в /tmp/bot.db")
+            _db_path = "/tmp/bot.db"
+        
+        self.conn = await aiosqlite.connect(_db_path))
         
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
