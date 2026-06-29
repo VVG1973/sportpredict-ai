@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self, db_path: str = "data/predictions.db"):
-        self.db_path = db_path
+        self.db_path = _get_safe_db_path()
         self.conn = None
     
     async def init(self):
