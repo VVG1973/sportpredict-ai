@@ -1,3 +1,13 @@
+
+import os
+
+def _get_safe_db_path():
+    # Принудительно создаем папку data в текущей рабочей директории
+    base_dir = os.getcwd()
+    data_dir = os.path.join(base_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, "bot.db")
+
 import aiosqlite
 import logging
 import json
@@ -29,7 +39,7 @@ class Database:
 
         # ============================
 
-        self.conn = await aiosqlite.connect(self.db_path)
+        self.conn = await aiosqlite.connect(_get_safe_db_path())
         
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
