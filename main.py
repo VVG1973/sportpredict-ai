@@ -662,5 +662,24 @@ async def main():
 
 # ================================================
 
+
+    # === ЗАПУСК TELEGRAM ПОЛЛИНГА ===
+    from aiogram import Bot
+    from config import settings
+    
+    bot = Bot(token=settings.BOT_TOKEN)
+    
+    # Регистрируем роутеры (если они есть)
+    try:
+        from telegram_bot.handlers import router as bot_router
+        dp.include_router(bot_router)
+        logger.info("✅ Роутеры бота зарегистрированы")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось зарегистрировать роутеры: {e}")
+    
+    logger.info("🚀 Запускаю Telegram-поллинг...")
+    await dp.start_polling(bot)
+    # =================================
+
 if __name__ == "__main__":
     asyncio.run(main())
