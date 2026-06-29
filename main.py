@@ -225,25 +225,14 @@ async def run_pipeline():
                     date_ru = pred["match"]["date"][:16].replace("T", " ")
 
                     personal_text = (
-                        f"⚡ <b>Прогноз на вашу команду!</b>
-
-"
-                        f"{sport} | <i>{league}</i>
-"
-                        f"🏟 <b>{home_team}</b> — <b>{away_team}</b>
-"
-                        f"📅 <i>{date_ru}</i>
-
-"
-                        f"🎯 <b>Прогноз:</b> {pred['prediction']}
-"
-                        f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}
-"
-                        f"💰 <b>Коэф:</b> {pred['odds_est']}
-
-"
-                        f"━━━━━━━━━━━━━━━━━━━━━
-"
+                        f"⚡ <b>Прогноз на вашу команду!</b>\n\n"
+                        f"{sport} | <i>{league}</i>\n"
+                        f"🏟 <b>{home_team}</b> — <b>{away_team}</b>\n"
+                        f"📅 <i>{date_ru}</i>\n\n"
+                        f"🎯 <b>Прогноз:</b> {pred['prediction']}\n"
+                        f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}\n"
+                        f"💰 <b>Коэф:</b> {pred['odds_est']}\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━\n"
                         f"⚠️ <i>Ответственная игра. 18+</i>"
                     )
 
