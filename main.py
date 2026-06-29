@@ -677,6 +677,36 @@ async def main():
         logger.info("✅ Роутеры бота зарегистрированы")
     except Exception as e:
         logger.warning(f"⚠️ Не удалось зарегистрировать роутеры: {e}")
+    # === АВТОМАТИЧЕСКОЕ ПОДКЛЮЧЕНИЕ ВСЕХ РОУТЕРОВ ===
+    import importlib
+    routers_to_include = [
+        ("telegram_bot.handlers", "router"),
+        ("telegram_bot.handlers", "main_router"),
+        ("telegram_bot.favorites", "router"),
+        ("telegram_bot.favorites", "favorites_router"),
+        ("telegram_bot.vip", "router"),
+        ("telegram_bot.vip", "vip_router"),
+        ("telegram_bot.admin", "router"),
+        ("telegram_bot.admin", "admin_router"),
+        ("telegram_bot.referral", "router"),
+        ("telegram_bot.referral", "referral_router"),
+        ("telegram_bot.stats", "router"),
+        ("telegram_bot.stats", "stats_router"),
+        ("telegram_bot.teams", "router"),
+        ("telegram_bot.teams", "teams_router"),
+    ]
+    
+    for module_name, router_name in routers_to_include:
+        try:
+            module = importlib.import_module(module_name)
+            router = getattr(module, router_name)
+            dp.include_router(router)
+            logger.info(f"✅ Роутер {module_name}.{router_name} подключён")
+        except Exception:
+            pass  # Тихо пропускаем, если модуля или роутера не существует
+    # =================================================
+
+
     
     logger.info("🚀 Запускаю Telegram-поллинг...")
     await dp.start_polling(bot)
