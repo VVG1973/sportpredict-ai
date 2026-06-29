@@ -17,6 +17,18 @@ class Database:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         import os
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+        # === СОЗДАНИЕ ПАПКИ ДЛЯ БД ===
+
+        db_dir = os.path.dirname(self.db_path)
+
+        if db_dir:
+
+            os.makedirs(db_dir, exist_ok=True)
+
+            logger.debug(f"📁 Папка для БД создана/проверена: {db_dir}")
+
+        # ============================
+
         self.conn = await aiosqlite.connect(self.db_path)
         
         # Таблица прогнозов с колонкой result
