@@ -667,7 +667,8 @@ async def main():
     from aiogram import Bot
     from config import settings
     
-    bot = Bot(token=settings.BOT_TOKEN)
+    import os
+    bot = Bot(token=(os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')))
     
     # Регистрируем роутеры (если они есть)
     try:
