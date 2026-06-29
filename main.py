@@ -32,16 +32,31 @@ logger.info("⏳ Инициализация ML-модели...")
 ml_model = PredictionModel()
 
 
+
 async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
+    from data_collectors.multi_sport_parser import MultiSportParser
+    from data_collectors.api_football_parser import APIFootballParser
+    
     parser = MultiSportParser(min_confidence=0.70)
+    api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     publisher = TelegramPublisher()
     db = Database()
     await db.init()
     manager = SubscriptionManager()
     await manager.init()
 
+    # Получаем матчи из MultiSportParser
     matches = await parser.fetch_upcoming_matches(count=20)
+    
+    # 🆕 Добавляем матчи из API-Football (летние лиги)
+    try:
+        api_matches = api_parser.get_matches_for_dates(days_ahead=3)
+        if api_matches:
+            matches.extend(api_matches)
+            logger.info(f"🌍 Добавлено {len(api_matches)} матчей из API-Football")
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка API-Football: {e}")
 
     if not matches:
         logger.info("📭 Матчей не найдено.")
@@ -55,6 +70,7 @@ async def run_pipeline():
     try:
         hist_path = Path("data/historical/all_matches_clean.csv")
         if hist_path.exists():
+            import pandas as pd
             historical_df = pd.read_csv(hist_path, encoding="utf-8", low_memory=False)
             historical_df["Date"] = pd.to_datetime(historical_df["Date"], errors="coerce")
             logger.info(f"📚 Загружено {len(historical_df)} исторических матчей для анализа формы")
@@ -66,17 +82,73 @@ async def run_pipeline():
     regular_predictions = []
 
     for m in matches:
-        home_team = m["teams"]["home"]["name"]
-        away_team = m["teams"]["away"]["name"]
-        match_date = pd.to_datetime(m["fixture"]["date"], errors="coerce")
+        # Извлекаем данные матча (поддержка обоих форматов)
+        if isinstance(m, dict) and "teams" in m:
+            # Формат MultiSportParser
+            home_team = m["teams"]["home"]["name"]
+            away_team = m["teams"]["away"]["name"]
+            match_date_str = m["fixture"]["date"]
+            fixture_id = m["fixture"]["id"]
+        else:
+            # Формат APIFootballParser
+            home_team = m.get("home_team", "Unknown")
+            away_team = m.get("away_team", "Unknown")
+            match_date_str = m.get("date", "")
+            fixture_id = m.get("fixture_id", f"api_{home_team}_{away_team}")
+        
+        import pandas as pd
+        match_date = pd.to_datetime(match_date_str, errors="coerce")
 
-        # Используем ML-модель для предсказания
-        ml_result = ml_model.predict(
-            home_team=home_team,
-            away_team=away_team,
-            match_date=match_date,
-            historical_df=historical_df
-        )
+        # 🆕 ФОРМИРУЕМ СЛОВАРЬ ДЛЯ ML-МОДЕЛИ (правильный формат!)
+        match_data = {
+            "home_team": home_team,
+            "away_team": away_team,
+            "match_date": match_date,
+            "historical_df": historical_df,
+            # Добавляем коэффициенты (если есть)
+            "b365_home": m.get("home_odds", 2.0),
+            "b365_draw": m.get("draw_odds", 3.5),
+            "b365_away": m.get("away_odds", 3.0),
+            "bw_home": m.get("home_odds", 2.0),
+            "bw_draw": m.get("draw_odds", 3.5),
+            "bw_away": m.get("away_odds", 3.0),
+            "iw_home": m.get("home_odds", 2.0),
+            "iw_draw": m.get("draw_odds", 3.5),
+            "iw_away": m.get("away_odds", 3.0),
+            "ps_home": m.get("home_odds", 2.0),
+            "ps_draw": m.get("draw_odds", 3.5),
+            "ps_away": m.get("away_odds", 3.0),
+            "wh_home": m.get("home_odds", 2.0),
+            "wh_draw": m.get("draw_odds", 3.5),
+            "wh_away": m.get("away_odds", 3.0),
+            # Синтетические признаки (fallback на 0)
+            "home_xg": 0.0,
+            "away_xg": 0.0,
+            "xg_diff": 0.0,
+            "home_sot_ratio": 0.0,
+            "away_sot_ratio": 0.0,
+            "home_dominance": 0.0,
+            # Реальные xG из Understat (если есть)
+            "home_season_xG": 0.0,
+            "away_season_xG": 0.0,
+            "home_season_xGA": 0.0,
+            "away_season_xGA": 0.0,
+            "xG_attack_diff": 0.0,
+            "xG_defense_diff": 0.0,
+            "home_attack_vs_away_defense": 0.0,
+            "away_attack_vs_home_defense": 0.0,
+            "home_season_NPxG": 0.0,
+            "away_season_NPxG": 0.0,
+            "home_ppda": 0.0,
+            "away_ppda": 0.0,
+        }
+
+        # 🆕 ВЫЗЫВАЕМ ML-МОДЕЛЬ С СЛОВАРЕМ (правильно!)
+        try:
+            ml_result = ml_model.predict(match_data)
+        except Exception as e:
+            logger.error(f"❌ Ошибка ML-прогноза для {home_team} vs {away_team}: {e}")
+            ml_result = {"prediction": "H", "confidence": 0.5}
 
         # Маппинг предсказания в русский формат
         outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
@@ -86,11 +158,11 @@ async def run_pipeline():
         else:
             predicted_outcome = m.get("outcome", "П1")
 
-        match_data = {
+        match_info = {
             "home_team": home_team,
             "away_team": away_team,
-            "date": m["fixture"]["date"],
-            "fixture_id": m["fixture"]["id"],
+            "date": match_date_str,
+            "fixture_id": fixture_id,
             "sport": m.get("sport", "⚽ Футбол"),
             "league": m.get("league", ""),
         }
@@ -98,11 +170,12 @@ async def run_pipeline():
         pred = {
             "prediction": predicted_outcome,
             "confidence": ml_result["confidence"],
-            "odds_est": m.get("odds", 2.0),
-            "match": match_data
+            "odds_est": m.get("home_odds", m.get("odds", 2.0)),
+            "match": match_info
         }
 
         # Категоризация на основе уверенности ML-модели
+        from config import settings
         if pred["confidence"] >= settings.VIP_CONFIDENCE_THRESHOLD:
             vip_predictions.append(pred)
         elif pred["confidence"] >= 0.71:
@@ -113,7 +186,6 @@ async def run_pipeline():
     published = 0
 
     # 1️⃣ VIP-прогнозы
-    # === СОРТИРОВКА И ЛИМИТ: Топ-5 VIP прогнозов по уверенности ===
     vip_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
     logger.info(f"🏆 Отобрано {len(vip_predictions)} VIP прогнозов (Топ-5 по уверенности)")
 
@@ -122,7 +194,6 @@ async def run_pipeline():
             published += 1
 
     # 2️⃣ Обычные прогнозы + персональные уведомления подписчикам команд
-    # === СОРТИРОВКА И ЛИМИТ: Топ-5 обычных прогнозов по уверенности ===
     regular_predictions = sorted(regular_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
     logger.info(f"📊 Отобрано {len(regular_predictions)} обычных прогнозов (Топ-5 по уверенности)")
 
@@ -139,7 +210,7 @@ async def run_pipeline():
                 odds=pred["odds_est"]
             )
 
-            # 🆕 Персональные уведомления подписчикам команд
+            # Персональные уведомления подписчикам команд
             try:
                 home_team = pred["match"]["home_team"]
                 away_team = pred["match"]["away_team"]
@@ -154,14 +225,25 @@ async def run_pipeline():
                     date_ru = pred["match"]["date"][:16].replace("T", " ")
 
                     personal_text = (
-                        f"⚡ <b>Прогноз на вашу команду!</b>\n\n"
-                        f"{sport} | <i>{league}</i>\n"
-                        f"🏟 <b>{home_team}</b> — <b>{away_team}</b>\n"
-                        f"📅 <i>{date_ru}</i>\n\n"
-                        f"🎯 <b>Прогноз:</b> {pred['prediction']}\n"
-                        f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}\n"
-                        f"💰 <b>Коэф:</b> {pred['odds_est']}\n\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"⚡ <b>Прогноз на вашу команду!</b>
+
+"
+                        f"{sport} | <i>{league}</i>
+"
+                        f"🏟 <b>{home_team}</b> — <b>{away_team}</b>
+"
+                        f"📅 <i>{date_ru}</i>
+
+"
+                        f"🎯 <b>Прогноз:</b> {pred['prediction']}
+"
+                        f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}
+"
+                        f"💰 <b>Коэф:</b> {pred['odds_est']}
+
+"
+                        f"━━━━━━━━━━━━━━━━━━━━━
+"
                         f"⚠️ <i>Ответственная игра. 18+</i>"
                     )
 
@@ -186,10 +268,9 @@ async def run_pipeline():
     # 3️⃣ Экспрессы
     express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
     express_published = 0
-    admin_express_details = []  # 🆕 Детали для админа
+    admin_express_details = []
 
     if len(express_candidates) >= 5:
-        # Экспресс №1: 2 события (149₽)
         express_2 = express_candidates[:2]
         events_2 = []
         total_odds_2 = 1.0
@@ -218,7 +299,6 @@ async def run_pipeline():
                 "price": 149
             })
 
-        # Экспресс №2: 3 события (199₽)
         express_3 = express_candidates[2:5]
         events_3 = []
         total_odds_3 = 1.0
@@ -277,14 +357,18 @@ async def run_pipeline():
             })
         logger.info(f"⚠️ Создан только 1 экспресс (кандидатов: {len(express_candidates)})")
 
-    # 🆕 ОТПРАВКА ДЕТАЛЕЙ ЭКСПРЕССОВ АДМИНУ (с раскрытыми исходами)
     if admin_express_details:
         try:
-            admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>\n\n"
+            from config import settings
+            admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>
+
+"
 
             for express in admin_express_details:
-                admin_text += f"<b>{express['title']}</b>\n"
-                admin_text += f"━━━━━━━━━━━━━━━━━━━━━\n"
+                admin_text += f"<b>{express['title']}</b>
+"
+                admin_text += f"━━━━━━━━━━━━━━━━━━━━━
+"
 
                 for i, ev in enumerate(express["events"], 1):
                     match = ev.get("match", {})
@@ -298,20 +382,31 @@ async def run_pipeline():
                     odds = ev.get("odds_est", 2.0)
 
                     admin_text += (
-                        f"<b>{i}.</b> {sport} | <i>{league}</i>\n"
-                        f"🏟 <b>{home}</b> — <b>{away}</b>\n"
-                        f"📅 <i>{date_str}</i>\n"
-                        f"🎯 <b>Исход: {prediction}</b>\n"
-                        f"📊 Уверенность: {confidence:.0%}\n"
-                        f"💰 Коэф: {odds}\n\n"
+                        f"<b>{i}.</b> {sport} | <i>{league}</i>
+"
+                        f"🏟 <b>{home}</b> — <b>{away}</b>
+"
+                        f"📅 <i>{date_str}</i>
+"
+                        f"🎯 <b>Исход: {prediction}</b>
+"
+                        f"📊 Уверенность: {confidence:.0%}
+"
+                        f"💰 Коэф: {odds}
+
+"
                     )
 
                 admin_text += (
-                    f"💵 <b>Цена:</b> {express['price']}₽\n"
-                    f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}\n\n"
+                    f"💵 <b>Цена:</b> {express['price']}₽
+"
+                    f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}
+
+"
                 )
 
-            admin_text += "━━━━━━━━━━━━━━━━━━━━━\n"
+            admin_text += "━━━━━━━━━━━━━━━━━━━━━
+"
             admin_text += f"📤 Всего опубликовано экспрессов: {express_published}"
 
             await publisher.bot.send_message(
@@ -328,7 +423,6 @@ async def run_pipeline():
         f"обычные={len(regular_predictions)}, экспрессы={express_published}"
     )
     await publisher.close()
-
 
 async def check_results_job():
     """Проверка результатов матчей"""
