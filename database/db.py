@@ -1,20 +1,30 @@
 
 import os
+import os
 
 def _get_safe_db_path():
-    # Принудительно создаем папку data в текущей рабочей директории
-    base_dir = os.getcwd()
-    data_dir = os.path.join(base_dir, "data")
+    """Возвращает безопасный путь к базе данных"""
+    # Приоритет 1: Railway Volume
+    volume_path = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if volume_path:
+        db_path = os.path.join(volume_path, "bot.db")
+        print(f"📁 Используем Railway Volume: {db_path}")
+        return db_path
+    
+    # Приоритет 2: Переменная окружения DATABASE_PATH
+    env_path = os.getenv("DATABASE_PATH")
+    if env_path:
+        print(f"📁 Используем DATABASE_PATH: {env_path}")
+        return env_path
+    
+    # Приоритет 3: Папка data в корне проекта
+    data_dir = os.path.join(os.getcwd(), "data")
     os.makedirs(data_dir, exist_ok=True)
-    return os.path.join(data_dir, "bot.db")
+    db_path = os.path.join(data_dir, "bot.db")
+    print(f"📁 Используем локальную папку: {db_path}")
+    return db_path
 
-import aiosqlite
-import logging
-import json
-from pathlib import Path
-from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -181,12 +191,19 @@ class Database:
             checked = wins + losses
             winrate = (wins / checked * 100) if checked > 0 else 0.0
             
+            # Рассчитываем ROI (примерный, на основе средних коэффициентов)
+            roi = 0.0
+            if checked > 0:
+                # Упрощенный расчет: если винрейт > 50%, ROI положительный
+                roi = (winrate - 50) * 2  # Примерная формула
+            
             return {
                 "total": total,
                 "wins": wins,
                 "losses": losses,
                 "pending": pending,
-                "winrate": winrate
+                "winrate": winrate,
+                "roi": roi
             }
         except Exception as e:
             logger.error(f"Ошибка статистики: {e}")
