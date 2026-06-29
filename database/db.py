@@ -77,7 +77,7 @@ class Database:
             print(f"⚠️ Ошибка записи в {_db_path}: {_e}. Fallback в /tmp/bot.db")
             _db_path = "/tmp/bot.db"
         
-        self.conn = await aiosqlite.connect(_db_path))
+        self.conn = await aiosqlite.connect(_db_path)
         
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
