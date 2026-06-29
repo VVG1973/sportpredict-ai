@@ -22,8 +22,15 @@ class PredictionModel:
         else:
             logger.warning("⚠️ PredictionModel инициализирован без обученной модели")
     
-    def predict(self, match_data: Dict) -> Dict:
-        """Делает прогноз для матча"""
+    def predict(self, match_data: Dict = None, **kwargs) -> Dict:
+        """
+        Делает прогноз для матча.
+        Поддерживает передачу как словаря (match_data), так и именованных аргументов (home_team=... и т.д.).
+        """
+        # Если данные переданы как именованные аргументы, собираем их в словарь
+        if match_data is None:
+            match_data = kwargs
+        
         prediction, confidence, probabilities = self.model.predict(match_data)
         
         return {
