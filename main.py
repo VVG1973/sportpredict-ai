@@ -672,5 +672,26 @@ async def main():
     await dp.start_polling(publisher.bot)
 
 
+
+
+# === РУЧНОЙ ЗАПУСК PIPELINE (для админа) ===
+@dp.message(Command("run"))
+async def cmd_run_pipeline(message: Message):
+    """Ручной запуск pipeline (только для админа)"""
+    from config import settings
+    
+    if message.from_user.id != settings.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+    
+    await message.answer("🚀 Запуск pipeline...")
+    
+    try:
+        await run_pipeline()
+        await message.answer("✅ Pipeline завершён успешно! Проверьте каналы.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+        logger.error(f"Ошибка ручного запуска: {e}")
+
 if __name__ == "__main__":
     asyncio.run(main())
