@@ -18,6 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from data_collectors.real_sports_parser import HybridSportsParser as MultiSportParser
+from data_collectors.api_football_parser import APIFootballParser
 logger.info("🧪 ЗАПУСК В РЕЖИМЕ ГИБРИДНЫХ ДАННЫХ (Реальные + Mock)")
 
 from ml_models.prediction_model import PredictionModel
