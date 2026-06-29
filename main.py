@@ -677,40 +677,40 @@ async def main():
         logger.info("✅ Роутеры бота зарегистрированы")
     except Exception as e:
         logger.warning(f"⚠️ Не удалось зарегистрировать роутеры: {e}")
-    # === АВТОМАТИЧЕСКОЕ ПОДКЛЮЧЕНИЕ ВСЕХ РОУТЕРОВ ===
+    # === ПОДКЛЮЧЕНИЕ ВСЕХ РОУТЕРОВ TELEGRAM-БОТА ===
     import importlib
-    import inspect
     from aiogram import Router
     
-    # Список модулей для сканирования
-    modules_to_scan = [
-        "telegram_bot.handlers",
-        "telegram_bot.favorites",
-        "telegram_bot.admin_handlers",
-        "telegram_bot.referral_handlers",
-        "telegram_bot.vip_manager",
+    # Список всех модулей и их роутеров (в порядке приоритета)
+    routers_config = [
+        ("telegram_bot.handlers", "router"),                    # Основные команды
+        ("telegram_bot.favorites", "router"),                   # Избранные команды
+        ("telegram_bot.admin_handlers", "admin_router"),        # Админ-команды
+        ("telegram_bot.referral_handlers", "router"),           # Реферальная система
     ]
     
     connected_routers = []
-    for module_name in modules_to_scan:
+    for module_name, router_name in routers_config:
         try:
             module = importlib.import_module(module_name)
-            # Ищем все объекты Router в модуле
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if isinstance(attr, Router):
-                    dp.include_router(attr)
-                    connected_routers.append(f"{module_name}.{attr_name}")
+            router = getattr(module, router_name, None)
+            if router and isinstance(router, Router):
+                dp.include_router(router)
+                connected_routers.append(f"{module_name}.{router_name}")
+                logger.info(f"✅ Роутер {module_name}.{router_name} подключён")
+            else:
+                logger.warning(f"⚠️ Роутер {router_name} не найден в {module_name}")
         except Exception as e:
-            logger.debug(f"Не удалось загрузить {module_name}: {e}")
+            logger.error(f"❌ Ошибка загрузки {module_name}: {e}")
     
     if connected_routers:
-        logger.info(f"✅ Подключено {len(connected_routers)} роутеров: {', '.join(connected_routers)}")
+        logger.info(f"✅ Всего подключено {len(connected_routers)} роутеров")
     else:
-        logger.warning("⚠️ Не найдено ни одного роутера для подключения")
+        logger.error("❌ Не подключено ни одного роутера!")
     # =================================================
 
 
+    
     
     
     logger.info("🚀 Запускаю Telegram-поллинг...")
