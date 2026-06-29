@@ -645,6 +645,27 @@ async def main():
 
     publisher = TelegramPublisher()
     dp = Dispatcher()
+
+
+# === РУЧНОЙ ЗАПУСК PIPELINE (для админа) ===
+@dp.message(Command("run"))
+async def cmd_run_pipeline(message: Message):
+    """Ручной запуск pipeline (только для админа)"""
+    from config import settings
+    
+    if message.from_user.id != settings.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+    
+    await message.answer("🚀 Запуск pipeline...")
+    
+    try:
+        await run_pipeline()
+        await message.answer("✅ Pipeline завершён успешно! Проверьте каналы.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+        logger.error(f"Ошибка ручного запуска: {e}")
+
     dp.include_router(admin_router)
 
     # ✅ ПОДКЛЮЧАЕМ ФАВОРИТОВ
