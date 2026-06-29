@@ -647,53 +647,6 @@ async def main():
     dp = Dispatcher()
 
 
-# === РУЧНОЙ ЗАПУСК PIPELINE (для админа) ===
-@dp.message(Command("run"))
-async def cmd_run_pipeline(message: Message):
-    """Ручной запуск pipeline (только для админа)"""
-    from config import settings
-    
-    if message.from_user.id != settings.ADMIN_ID:
-        await message.answer("⛔ Доступ запрещён")
-        return
-    
-    await message.answer("🚀 Запуск pipeline...")
-    
-    try:
-        await run_pipeline()
-        await message.answer("✅ Pipeline завершён успешно! Проверьте каналы.")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-        logger.error(f"Ошибка ручного запуска: {e}")
-
-    dp.include_router(admin_router)
-
-    # ✅ ПОДКЛЮЧАЕМ ФАВОРИТОВ
-    try:
-        from telegram_bot.favorites import router as favorites_router
-        dp.include_router(favorites_router)
-        logger.info("✅ favorites_router подключён")
-
-        # ✅ ПОДКЛЮЧАЕМ РЕФЕРАЛЬНУЮ ПРОГРАММУ
-        try:
-            from telegram_bot.referral_handlers import router as referral_router
-            dp.include_router(referral_router)
-            logger.info("✅ referral_router подключён")
-        except ImportError as e:
-            logger.error(f"❌ Не удалось загрузить referral_handlers: {e}")
-    except ImportError as e:
-        logger.error(f"❌ Не удалось загрузить favorites: {e}")
-
-    try:
-        await publisher.bot.delete_webhook(drop_pending_updates=True)
-    except Exception as e:
-        logger.warning(f"⚠️ webhook: {e}")
-
-    logger.info("🤖 SportPredict AI запущен. Расписание: 8:00 МСК ежедневно.")
-    await dp.start_polling(publisher.bot)
-
-
-
 
 if __name__ == "__main__":
     asyncio.run(main())
