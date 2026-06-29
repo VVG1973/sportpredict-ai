@@ -1,3 +1,5 @@
+import asyncpg
+import os
 import aiosqlite
 import logging
 logger = logging.getLogger(__name__)
@@ -49,35 +51,16 @@ class Database:
         self.conn = None
     
     async def init(self):
-        """Инициализация соединения и создание всех таблиц"""
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        import os
-        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
-        # === СОЗДАНИЕ ПАПКИ ДЛЯ БД ===
-
-        db_dir = os.path.dirname(self.db_path)
-
-        if db_dir:
-
-            os.makedirs(db_dir, exist_ok=True)
-
-            logger.debug(f"📁 Папка для БД создана/проверена: {db_dir}")
-
-        # ============================
-
-        import os as _os
-        _vol = _os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-        _db_path = _os.path.join(_vol, "bot.db") if _vol else "/tmp/bot.db"
-        try:
-            if _os.path.dirname(_db_path):
-                _os.makedirs(_os.path.dirname(_db_path), exist_ok=True)
-            open(_db_path, 'a').close()  # Тестовая запись
-            print(f"📁 Успешно открыли для записи: {_db_path}")
-        except Exception as _e:
-            print(f"⚠️ Ошибка записи в {_db_path}: {_e}. Fallback в /tmp/bot.db")
-            _db_path = "/tmp/bot.db"
+        """Инициализация подключения к PostgreSQL"""
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise ValueError("DATABASE_URL не установлен в переменных окружения!")
         
-        self.conn = await aiosqlite.connect(_db_path)
+        self.conn = await asyncpg.connect(db_url)
+        print("📁 Подключено к PostgreSQL")
+        
+        # Создаем таблицы если их нет
+        await self.create_tables()
         
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
@@ -169,6 +152,44 @@ class Database:
     
     # === ПРОГНОЗЫ ===
     
+
+    async def create_tables(self):
+        """Создает таблицы в PostgreSQL если их нет"""
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                is_vip BOOLEAN DEFAULT FALSE,
+                vip_expires TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS favorite_teams (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(user_id),
+                team_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                id SERIAL PRIMARY KEY,
+                match_id TEXT,
+                home_team TEXT,
+                away_team TEXT,
+                prediction TEXT,
+                confidence REAL,
+                odds REAL,
+                result TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        print("✅ Таблицы PostgreSQL созданы/проверены")
+
     async def save_prediction(self, fixture_id, home, away, date, pred, conf, odds):
         try:
             await self.conn.execute("""
