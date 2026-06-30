@@ -131,8 +131,7 @@ async def btn_publish(message: Message):
     
     from main import run_pipeline
     menu = get_menu_for_user(message.from_user.id)
-    status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b>
-Это может занять до 1 минуты.", parse_mode="HTML", reply_markup=menu)
+    status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b> Это может занять до 1 минуты.", parse_mode="HTML", reply_markup=menu)
     
     try:
         # Запускаем пайплайн
