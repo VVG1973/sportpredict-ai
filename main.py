@@ -20,7 +20,7 @@ from data_collectors.real_sports_parser import HybridSportsParser as MultiSportP
 logger.info("🧪 ЗАПУСК В РЕЖИМЕ ГИБРИДНЫХ ДАННЫХ (Реальные + Mock)")
 
 from ml_models.prediction_model import PredictionModel
-# ИНИЦИАЛИЗИРУЕМ МОДЕЛЬ ОДИН РАЗ ПРИ СТАРТЕ, чтобы она не грузилась при каждом нажатии кнопки
+# ИНИЦИАЛИЗИРУЕМ МОДЕЛЬ ОДИН РАЗ ПРИ СТАРТЕ
 ml_model = PredictionModel()
 
 from telegram_bot.event_publisher import TelegramPublisher
@@ -53,39 +53,36 @@ async def run_pipeline():
         db = Database()
         await db.init()
         manager = SubscriptionManager()
-        await manager.init() # здесь у тебя была случайная буква 'q', я её удалил
+        await manager.init()
 
-            matches = await parser.fetch_upcoming_matches(count=20)
+        matches = await parser.fetch_upcoming_matches(count=20)
 
-    # 🛡️ ФИЛЬТР ОТ ФЕЙКОВЫХ (MOCK) МАТЧЕЙ
-    real_matches = []
-    for m in matches:
-        fid = m.get("fixture", {}).get("id")
-        # У реальных матчей API-Football ID всегда большое число (например, 1000000+)
-        if fid and isinstance(fid, int) and fid > 10000:
-            real_matches.append(m)
-            
-    matches = real_matches
+        # 🛡️ ФИЛЬТР ОТ ФЕЙКОВЫХ (MOCK) МАТЧЕЙ
+        real_matches = []
+        for m in matches:
+            fid = m.get("fixture", {}).get("id")
+            # У реальных матчей API-Football ID всегда большое число (например, 1000000+)
+            if fid and isinstance(fid, int) and fid > 10000:
+                real_matches.append(m)
+                
+        matches = real_matches
 
-    if not matches:
-        logger.info("📭 Реальных матчей не найдено. Фейковые матчи отключены (защита от бана).")
-        # ОПОВЕЩАЕМ АДМИНА В ЛИЧКУ
-        try:
-            from telegram_bot.event_publisher import TelegramPublisher
-            admin_publisher = TelegramPublisher()
-            await admin_publisher.bot.send_message(
-                chat_id=settings.ADMIN_ID,
-                text="⚠️ <b>Публикация отменена:</b> Нет реальных матчей на сегодня. Бот не спамит фейками.",
-                parse_mode="HTML"
-            )
-            await admin_publisher.close()
-        except Exception as e:
-            logger.error(f"Не удалось отправить сообщение админу: {e}")
-            
-        await publisher.close()
-        return 0
+        if not matches:
+            logger.info("📭 Реальных матчей не найдено. Фейковые матчи отключены (защита от бана).")
+            # ОПОВЕЩАЕМ АДМИНА В ЛИЧКУ
+            try:
+                await publisher.bot.send_message(
+                    chat_id=settings.ADMIN_ID,
+                    text="⚠️ <b>Публикация отменена:</b> Нет реальных матчей на сегодня. Бот не спамит фейками.",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить сообщение админу: {e}")
+                
+            await publisher.close()
+            return 0
 
-        logger.info(f"📊 Найдено матчей: {len(matches)}")
+        logger.info(f"📊 Найдено РЕАЛЬНЫХ матчей: {len(matches)}")
 
         # Загружаем исторические данные для анализа формы команд
         historical_df = None
@@ -215,10 +212,9 @@ async def run_pipeline():
         # 3️⃣ Экспрессы
         express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         express_published = 0
-        admin_express_details = []  # 🆕 Детали для админа
+        admin_express_details = []
 
         if len(express_candidates) >= 5:
-            # Экспресс №1: 2 события (149₽)
             express_2 = express_candidates[:2]
             events_2 = []
             total_odds_2 = 1.0
@@ -247,7 +243,6 @@ async def run_pipeline():
                     "price": 149
                 })
 
-            # Экспресс №2: 3 события (199₽)
             express_3 = express_candidates[2:5]
             events_3 = []
             total_odds_3 = 1.0
@@ -306,15 +301,12 @@ async def run_pipeline():
                 })
             logger.info(f"⚠️ Создан только 1 экспресс (кандидатов: {len(express_candidates)})")
 
-        # 🆕 ОТПРАВКА ДЕТАЛЕЙ ЭКСПРЕССОВ АДМИНУ (с раскрытыми исходами)
         if admin_express_details:
             try:
                 admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>\n\n"
-
                 for express in admin_express_details:
                     admin_text += f"<b>{express['title']}</b>\n"
                     admin_text += f"━━━━━━━━━━━━━━━━━━━━━\n"
-
                     for i, ev in enumerate(express["events"], 1):
                         match = ev.get("match", {})
                         home = match.get("home_team", "?")
@@ -325,7 +317,6 @@ async def run_pipeline():
                         prediction = ev.get("prediction", "?")
                         confidence = ev.get("confidence", 0)
                         odds = ev.get("odds_est", 2.0)
-
                         admin_text += (
                             f"<b>{i}.</b> {sport} | <i>{league}</i>\n"
                             f"🏟 <b>{home}</b> — <b>{away}</b>\n"
@@ -334,28 +325,18 @@ async def run_pipeline():
                             f"📊 Уверенность: {confidence:.0%}\n"
                             f"💰 Коэф: {odds}\n\n"
                         )
-
                     admin_text += (
                         f"💵 <b>Цена:</b> {express['price']}₽\n"
                         f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}\n\n"
                     )
-
                 admin_text += "━━━━━━━━━━━━━━━━━━━━━\n"
                 admin_text += f"📤 Всего опубликовано экспрессов: {express_published}"
-
-                await publisher.bot.send_message(
-                    chat_id=settings.ADMIN_ID,
-                    text=admin_text,
-                    parse_mode="HTML"
-                )
+                await publisher.bot.send_message(chat_id=settings.ADMIN_ID, text=admin_text, parse_mode="HTML")
                 logger.info(f"📨 Детали экспрессов отправлены админу")
             except Exception as e:
                 logger.error(f"Ошибка отправки деталей админу: {e}")
 
-        logger.info(
-            f"📤 Опубликовано {published}: VIP={len(vip_predictions)}, "
-            f"обычные={len(regular_predictions)}, экспрессы={express_published}"
-        )
+        logger.info(f"📤 Опубликовано {published}: VIP={len(vip_predictions)}, обычные={len(regular_predictions)}, экспрессы={express_published}")
         await publisher.close()
         return published
         
@@ -363,7 +344,6 @@ async def run_pipeline():
         logger.error(f"❌ Критическая ошибка в пайплайне: {e}")
         return 0
     finally:
-        # ВЫКЛЮЧАЕМ ЗАМОК ОБЯЗАТЕЛЬНО, даже если код упал с ошибкой
         is_pipeline_running = False
 
 
@@ -388,9 +368,7 @@ async def send_stats_report():
         f"🎯 Винрейт: {stats['winrate']:.1f}%\n"
     )
     try:
-        await publisher.bot.send_message(
-            chat_id=settings.CHANNEL_ID, text=text, parse_mode="Markdown"
-        )
+        await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Ошибка отчета: {e}")
     finally:
@@ -416,86 +394,40 @@ async def check_crypto_payments():
         status = await service.check_invoice_status(inv["invoice_id"])
         if status == "paid":
             plan = inv["plan"]
-
-            # ЭКСПРЕСС
             if plan.startswith("express_"):
                 try:
                     parts = plan.split(":")
                     group_id = int(parts[1]) if len(parts) > 1 else int(plan.split("_")[2])
-
                     group_data = await manager.get_express_group(group_id)
                     if not group_data:
                         logger.error(f"❌ Группа {group_id} не найдена")
                         continue
-
                     full_text, keyboard = purchase_service.format_express_message(group_data)
-
-                    await publisher.bot.send_message(
-                        chat_id=inv["user_id"],
-                        text=full_text,
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
-
+                    await publisher.bot.send_message(chat_id=inv["user_id"], text=full_text, reply_markup=keyboard, parse_mode="HTML")
                     await manager.mark_invoice_paid(inv["invoice_id"])
-                    logger.info(
-                        f"✅ Экспресс x{group_data['events_count']} #{inv['invoice_id']} для @{inv['username']}"
-                    )
+                    logger.info(f"✅ Экспресс x{group_data['events_count']} #{inv['invoice_id']} для @{inv['username']}")
                 except Exception as e:
                     logger.error(f"❌ Ошибка выдачи экспресса: {e}")
-
-            # ОДИНОЧНЫЙ ПЛАТНЫЙ ПРОГНОЗ
             elif plan.startswith("single_"):
                 try:
                     parts = plan.split(":")
                     group_id = int(parts[1]) if len(parts) > 1 else int(plan.replace("single_", ""))
-
                     group_data = await manager.get_express_group(group_id)
                     if group_data and group_data["events"]:
                         ev = group_data["events"][0]
-                        match_info = {
-                            "home_team": ev["home_team"],
-                            "away_team": ev["away_team"],
-                            "date": ev["date"],
-                            "sport": ev["sport"],
-                            "league": ev["league"]
-                        }
-                        full_text, keyboard = purchase_service.format_prediction_message(
-                            match_info=match_info,
-                            prediction=ev["prediction"],
-                            confidence=ev["confidence"],
-                            odds=ev["odds"]
-                        )
-
-                        await publisher.bot.send_message(
-                            chat_id=inv["user_id"],
-                            text=full_text,
-                            reply_markup=keyboard,
-                            parse_mode="HTML"
-                        )
-
+                        match_info = {"home_team": ev["home_team"], "away_team": ev["away_team"], "date": ev["date"], "sport": ev["sport"], "league": ev["league"]}
+                        full_text, keyboard = purchase_service.format_prediction_message(match_info=match_info, prediction=ev["prediction"], confidence=ev["confidence"], odds=ev["odds"])
+                        await publisher.bot.send_message(chat_id=inv["user_id"], text=full_text, reply_markup=keyboard, parse_mode="HTML")
                         await manager.mark_invoice_paid(inv["invoice_id"])
                         logger.info(f"✅ Одиночный #{inv['invoice_id']} для @{inv['username']}")
                 except Exception as e:
                     logger.error(f"❌ Ошибка одиночного: {e}")
-
-            # VIP-ПОДПИСКА
             elif plan in ["day", "week", "month", "quarter"]:
                 try:
-                    invite_link, expires_at = await vip_manager.create_personal_invite(
-                        user_id=inv["user_id"], username=inv["username"], plan=plan
-                    )
+                    invite_link, expires_at = await vip_manager.create_personal_invite(user_id=inv["user_id"], username=inv["username"], plan=plan)
                     await manager.mark_invoice_paid(inv["invoice_id"])
                     expires_msk = expires_at.astimezone(timezone(timedelta(hours=3)))
-                    await publisher.bot.send_message(
-                        chat_id=inv["user_id"],
-                        text=(
-                            f"🎉 <b>Оплата получена!</b>\n\n"
-                            f"👑 До: <b>{expires_msk.strftime('%d.%m.%Y %H:%M')} (МСК)</b>\n\n"
-                            f"🔗 <a href='{invite_link}'>👉 ВОЙТИ В VIP</a>"
-                        ),
-                        parse_mode="HTML", disable_web_page_preview=True
-                    )
+                    await publisher.bot.send_message(chat_id=inv["user_id"], text=(f"🎉 <b>Оплата получена!</b>\n\n👑 До: <b>{expires_msk.strftime('%d.%m.%Y %H:%M')} (МСК)</b>\n\n🔗 <a href='{invite_link}'>👉 ВОЙТИ В VIP</a>"), parse_mode="HTML", disable_web_page_preview=True)
                 except Exception as e:
                     logger.error(f"❌ Ошибка VIP: {e}")
 
@@ -505,19 +437,10 @@ async def check_crypto_payments():
 
 async def main():
     """Главная функция: запускает веб-сервер + бот + scheduler"""
-
-    # 🆕 Запускаем веб-сервер параллельно с ботом
     try:
         import uvicorn
         from web.main import app as web_app
-
-        config = uvicorn.Config(
-            web_app,
-            host="0.0.0.0",
-            port=8000,
-            log_level="warning",
-            access_log=False
-        )
+        config = uvicorn.Config(web_app, host="0.0.0.0", port=8000, log_level="warning", access_log=False)
         server = uvicorn.Server(config)
         asyncio.create_task(server.serve())
         logger.info("🌐 Веб-сайт запущен на http://0.0.0.0:8000")
@@ -525,79 +448,35 @@ async def main():
         logger.warning(f"⚠️ Не удалось запустить веб-сервер: {e}")
 
     scheduler = AsyncIOScheduler(timezone=timezone(timedelta(hours=3)))
+    scheduler.add_job(run_pipeline, "cron", hour=8, minute=0, id="morning_publisher")
 
-    # ГЛАВНАЯ ПУБЛИКАЦИЯ: каждый день в 8:00 МСК
-    scheduler.add_job(
-        run_pipeline,
-        "cron",
-        hour=8, minute=0,
-        id="morning_publisher"
-    )
-
-    # ЕЖЕДНЕВНАЯ СТАТИСТИКА: каждый день в 8:05 МСК
     async def daily_stats_report():
         try:
             db = Database()
             await db.init()
             stats = await db.get_stats()
             publisher = TelegramPublisher()
-
-            text = (
-                f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n"
-                f"🏟 Сыграно прогнозов: {stats['total']}\n"
-                f"✅ Выигрышей: {stats['wins']}\n"
-                f"❌ Проигрышей: {stats['losses']}\n"
-                f"⏳ Ожидают результата: {stats['pending']}\n"
-                f"🎯 <b>Винрейт:</b> {stats['winrate']:.1f}%\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>Подписывайтесь на VIP для эксклюзивных прогнозов!</i>\n\n"
-                f"⚠️ <i>Дисклеймер: Прогнозы носят информационный характер. "
-                f"Ответственная игра. 18+</i>"
-            )
-
-            await publisher.bot.send_message(
-                chat_id=settings.CHANNEL_ID,
-                text=text,
-                parse_mode="HTML"
-            )
+            text = (f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n🏟 Сыграно прогнозов: {stats['total']}\n✅ Выигрышей: {stats['wins']}\n❌ Проигрышей: {stats['losses']}\n⏳ Ожидают результата: {stats['pending']}\n🎯 <b>Винрейт:</b> {stats['winrate']:.1f}%\n\n━━━━━━━━━━━━━━━━━━━━━\n💡 <i>Подписывайтесь на VIP для эксклюзивных прогнозов!</i>\n\n⚠️ <i>Дисклеймер: Прогнозы носят информационный характер. Ответственная игра. 18+</i>")
+            await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="HTML")
             await publisher.close()
             logger.info("📊 Ежедневная статистика отправлена")
         except Exception as e:
             logger.error(f"Ошибка ежедневной статистики: {e}")
 
     scheduler.add_job(daily_stats_report, "cron", hour=8, minute=5, id="daily_stats")
-
-    # Проверка результатов (каждые 30 минут)
-    scheduler.add_job(
-        check_results_job, "interval", minutes=30,
-        next_run_time=datetime.now(), id="result_checker"
-    )
-
-    # Еженедельный отчёт (каждый понедельник в 12:00 МСК)
-    scheduler.add_job(
-        send_stats_report, "cron", day_of_week="mon",
-        hour=12, minute=0, id="weekly_report"
-    )
-
+    scheduler.add_job(check_results_job, "interval", minutes=30, next_run_time=datetime.now(), id="result_checker")
+    scheduler.add_job(send_stats_report, "cron", day_of_week="mon", hour=12, minute=0, id="weekly_report")
     scheduler.start()
 
-    # Проверка просроченных VIP (каждый час)
     async def check_expired_vip():
         p = TelegramPublisher()
         v = VIPManager(p.bot)
         await v.remove_expired_users()
         await p.close()
 
-    scheduler.add_job(
-        check_expired_vip, "interval", hours=1,
-        next_run_time=datetime.now(), id="vip_checker"
-    )
-    scheduler.add_job(
-        check_crypto_payments, "interval", seconds=30,
-        next_run_time=datetime.now(), id="crypto_checker"
-    )
+    scheduler.add_job(check_expired_vip, "interval", hours=1, next_run_time=datetime.now(), id="vip_checker")
+    scheduler.add_job(check_crypto_payments, "interval", seconds=30, next_run_time=datetime.now(), id="crypto_checker")
 
-    # ЕЖЕНЕДЕЛЬНОЕ ПЕРЕОБУЧЕНИЕ: каждое воскресенье в 03:00 МСК
     async def weekly_retrain():
         try:
             logger.info("🔄 Запускаю еженедельное переобучение модели...")
@@ -613,10 +492,7 @@ async def main():
         except Exception as e:
             logger.error(f"❌ Ошибка еженедельного переобучения: {e}")
 
-    scheduler.add_job(
-        weekly_retrain, "cron", day_of_week="sun",
-        hour=3, minute=0, id="weekly_retrain"
-    )
+    scheduler.add_job(weekly_retrain, "cron", day_of_week="sun", hour=3, minute=0, id="weekly_retrain")
 
     publisher = TelegramPublisher()
     dp = Dispatcher()
