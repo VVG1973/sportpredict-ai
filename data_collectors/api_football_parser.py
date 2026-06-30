@@ -7,6 +7,22 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict
 import httpx
+ALL_LEAGUES = [
+    39,   # Premier League (England)
+    140,  # La Liga (Spain)
+    135,  # Serie A (Italy)
+    78,   # Bundesliga (Germany)
+    61,   # Ligue 1 (France)
+    88,   # Eredivisie (Netherlands)
+    94,   # Primeira Liga (Portugal)
+    235,  # Super Lig (Turkey)
+    71,   # Serie A (Brazil)
+    7,    # MLS (USA)
+    1,    # FIFA World Cup
+    2,    # UEFA Champions League
+    3,    # UEFA Europa League
+]
+
 
 logger = logging.getLogger(__name__)
 

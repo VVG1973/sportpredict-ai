@@ -2,6 +2,22 @@ import sys
 import os
 # Добавляем корень проекта в пути импорта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ALL_LEAGUES = [
+    39,   # Premier League (England)
+    140,  # La Liga (Spain)
+    135,  # Serie A (Italy)
+    78,   # Bundesliga (Germany)
+    61,   # Ligue 1 (France)
+    88,   # Eredivisie (Netherlands)
+    94,   # Primeira Liga (Portugal)
+    235,  # Super Lig (Turkey)
+    71,   # Serie A (Brazil)
+    7,    # MLS (USA)
+    1,    # FIFA World Cup
+    2,    # UEFA Champions League
+    3,    # UEFA Europa League
+]
+
 
 import httpx
 import pandas as pd
@@ -84,7 +100,7 @@ class HistoricalDataLoader:
             "result": result
         }
     
-    async def load_history(self, league_id: int = 39, season: int = 2024):
+    async def load_history(self, league_id: int = None  # Will iterate over ALL_LEAGUES, season: int = 2024):
         """Загружает историю за 1 сезон (экономим лимит API)"""
         logger.info(f"🔄 Загрузка сезона {season}...")
         fixtures = await self.fetch_season_fixtures(league_id, season)
