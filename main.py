@@ -37,6 +37,119 @@ async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
     from analyzers.feature_extractor import extract_features
     from data_collectors.api_football_parser import APIFootballParser
+    from telegram_bot.event_publisher import TelegramPublisher
+    from database.db import Database
+    from telegram_bot.vip_manager import SubscriptionManager
+    from datetime import datetime, timedelta
+    
+    api_parser = APIFootballParser()
+    publisher = TelegramPublisher()
+    db = Database()
+    await db.init()
+    manager = SubscriptionManager()
+    await manager.init()
+
+    try:
+        api_matches = await api_parser.fetch_upcoming_matches(days=2)
+    except Exception as e:
+        logger.error(f"Ошибка API-Football: {e}")
+        api_matches = []
+
+    today = datetime.now().date()
+    tomorrow = today + timedelta(days=1)
+    
+    matches = []
+    for m in api_matches:
+        if not m.get("is_real", False):
+            continue
+        match_date_str = m.get("date", "")
+        try:
+            match_date = datetime.strptime(match_date_str[:10], "%Y-%m-%d").date()
+            if match_date in [today, tomorrow]:
+                matches.append(m)
+        except:
+            continue
+            
+    if not matches:
+        logger.info("📭 Реальных матчей на сегодня-завтра не найдено.")
+        await publisher.close()
+        return 0
+
+    logger.info(f"📊 Найдено РЕАЛЬНЫХ матчей на сегодня-завтра: {len(matches)}")
+    
+    published_count = 0
+    for m in matches:
+        home_team = m.get("home_team", "Unknown")
+        away_team = m.get("away_team", "Unknown")
+        match_date_str = m.get("date", "")
+        match_time = m.get("time", "")
+        league = m.get("league", "Unknown")
+        fixture_id = m.get("fixture_id", f"api_{home_team}_{away_team}")
+        
+        home_odds = float(m.get("home_odds", 0) or 0)
+        draw_odds = float(m.get("draw_odds", 0) or 0)
+        away_odds = float(m.get("away_odds", 0) or 0)
+        
+        match_data = {
+            "fixture_id": fixture_id, "league": league,
+            "home_team": home_team, "away_team": away_team,
+            "home_odds": home_odds, "draw_odds": draw_odds, "away_odds": away_odds,
+            "date": match_date_str, "time": match_time
+        }
+        
+        try:
+            feature_cols = getattr(getattr(ml_model, 'model', ml_model), 'feature_cols', None)
+            enriched_match_data = extract_features(match_data, feature_cols)
+            ml_result = ml_model.predict(enriched_match_data)
+        except Exception as e:
+            logger.error(f"❌ Ошибка ML-прогноза для {home_team} vs {away_team}: {e}")
+            ml_result = {"prediction": "H", "confidence": 0.5, "probabilities": {"H": 0.33, "D": 0.33, "A": 0.33}}
+            
+        # Bookmaker Odds Override
+        if home_odds > 0 and draw_odds > 0 and away_odds > 0:
+            min_odds = min(home_odds, draw_odds, away_odds)
+            if ml_result.get("prediction") == "D" or ml_result.get("confidence", 0) < 0.45:
+                if min_odds == home_odds:
+                    ml_result["prediction"] = "H"
+                    ml_result["confidence"] = max(ml_result.get("confidence", 0), 0.60)
+                elif min_odds == away_odds:
+                    ml_result["prediction"] = "A"
+                    ml_result["confidence"] = max(ml_result.get("confidence", 0), 0.60)
+                    
+        prediction = ml_result.get("prediction", "H")
+        confidence = ml_result.get("confidence", 0.5)
+        pred_map = {"H": "П1 (Победа хозяев)", "D": "Ничья", "A": "П2 (Победа гостей)"}
+        pred_text = pred_map.get(prediction, "П1")
+        is_vip = confidence >= 0.65
+        
+        post_text = (
+            f"⚽ <b>{league}</b>
+"
+            f"🏟 <b>{home_team} — {away_team}</b>
+"
+            f"📅 {match_date_str} в {match_time}
+
+"
+            f"🤖 <b>Прогноз AI:</b> {pred_text}
+"
+            f"🎯 <b>Уверенность:</b> {confidence:.0%}
+
+"
+            f"{'💎 <i>VIP-сетап</i>' if is_vip else '📊 <i>Обычный прогноз</i>'}"
+        )
+        
+        try:
+            await publisher.publish_prediction(post_text, is_vip=is_vip)
+            published_count += 1
+            logger.info(f"✅ Опубликовано: {home_team} vs {away_team} ({pred_text}, {confidence:.0%})")
+        except Exception as e:
+            logger.error(f"❌ Ошибка публикации: {e}")
+            
+    await publisher.close()
+    logger.info(f"🏁 Пайплайн завершен. Опубликовано прогнозов: {published_count}")
+    return published_count
+
+
 
     api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     publisher = TelegramPublisher()
