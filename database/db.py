@@ -230,7 +230,7 @@ class Database:
     
     async def get_stats(self):
         try:
-            cursor = await self.conn.execute("SELECT COUNT(*) FROM predictions")
+            cursor = await self.conn.fetch("SELECT COUNT(*) FROM predictions")
             total = (await cursor.fetchone())[0]
             
             cursor_wins = await self.conn.execute("SELECT COUNT(*) FROM predictions WHERE result = 'win'")
@@ -282,7 +282,7 @@ class Database:
                 "SELECT events_json, total_odds, price, events_count FROM express_groups WHERE id = ?",
                 (group_id,)
             )
-            row = await cursor.fetchone()
+            row = cursor.fetchone()
             if row:
                 return {
                     "events": json.loads(row[0]),
@@ -313,7 +313,7 @@ class Database:
             cursor = await self.conn.execute(
                 "SELECT invoice_id, user_id, username, plan FROM invoices WHERE status = 'pending'"
             )
-            rows = await cursor
+            rows = cursor
             return [{"invoice_id": r[0], "user_id": r[1], "username": r[2], "plan": r[3]} for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения инвойсов: {e}")
@@ -347,7 +347,7 @@ class Database:
             cursor = await self.conn.execute(
                 "SELECT user_id, username FROM subscriptions WHERE status = 'active' AND expires_at < ?", (now,)
             )
-            rows = await cursor
+            rows = cursor
             return [{"user_id": r[0], "username": r[1]} for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения истёкших подписок: {e}")
@@ -393,7 +393,7 @@ class Database:
             cursor = await self.conn.execute(
                 "SELECT team_name FROM user_favorites WHERE user_id = ?", (user_id,)
             )
-            rows = await cursor
+            rows = cursor
             return [row[0] for row in rows]
         except Exception as e:
             logger.error(f"Ошибка получения избранного: {e}")
@@ -404,7 +404,7 @@ class Database:
             cursor = await self.conn.execute(
                 "SELECT user_id FROM user_favorites WHERE team_name = ?", (team_name,)
             )
-            rows = await cursor
+            rows = cursor
             return [row[0] for row in rows]
         except Exception as e:
             logger.error(f"Ошибка получения подписчиков: {e}")
@@ -460,7 +460,7 @@ class Database:
                 "SELECT username, created_at FROM referrals WHERE referrer_id = ? ORDER BY created_at DESC",
                 (user_id,)
             )
-            rows = await cursor
+            rows = cursor
             return [{"username": row[0], "created_at": row[1]} for row in rows]
         except Exception as e:
             logger.error(f"Ошибка получения рефералов: {e}")
@@ -479,7 +479,7 @@ class Database:
                         cursor = await self.conn.execute(
                             f"SELECT {col} FROM {table} WHERE user_id = ?", (user_id,)
                         )
-                        rows = await cursor
+                        rows = cursor
                         if rows:
                             teams = [row[0] for row in rows]
                             follows = len(teams)
