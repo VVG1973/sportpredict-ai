@@ -278,8 +278,8 @@ async def main():
 
     # 🆕 Запускаем веб-сервер параллельно с ботом
     try:
-import uvicorn
-from web.main import app as web_app
+        import uvicorn
+        from web.main import app as web_app
 
         config = uvicorn.Config(
             web_app,
