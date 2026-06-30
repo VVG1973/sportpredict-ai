@@ -35,7 +35,7 @@ ml_model = PredictionModel()
 
 async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
-        from analyzers.feature_extractor import extract_features
+from analyzers.feature_extractor import extract_features
     from data_collectors.api_football_parser import APIFootballParser
     
         api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
