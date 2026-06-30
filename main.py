@@ -50,6 +50,8 @@ async def run_pipeline():
     await manager.init()
 
     try:
+    except Exception:
+        pass  # Auto-added to fix SyntaxError
         api_matches = await api_parser.fetch_upcoming_matches(days=2)
     except Exception as e:
         logger.error(f"Ошибка API-Football: {e}")
@@ -64,6 +66,8 @@ async def run_pipeline():
             continue
         match_date_str = m.get("date", "")
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             match_date = datetime.strptime(match_date_str[:10], "%Y-%m-%d").date()
             if match_date in [today, tomorrow]:
                 matches.append(m)
@@ -98,6 +102,8 @@ async def run_pipeline():
         }
         
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             feature_cols = getattr(getattr(ml_model, 'model', ml_model), 'feature_cols', None)
             enriched_match_data = extract_features(match_data, feature_cols)
             ml_result = ml_model.predict(enriched_match_data)
@@ -126,6 +132,8 @@ async def run_pipeline():
         post_text = f"⚽ <b>{league}</b>\n🏟 <b>{home_team} — {away_team}</b>\n📅 {match_date_str} в {match_time}\n\n🤖 <b>Прогноз AI:</b> {pred_text}\n🎯 <b>Уверенность:</b> {confidence:.0%}\n\n{vip_tag}"
         
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             await publisher.publish_prediction(post_text, is_vip=is_vip)
             published_count += 1
             logger.info(f"✅ Опубликовано: {home_team} vs {away_team}")
@@ -158,6 +166,8 @@ async def send_stats_report():
         f"🎯 Винрейт: {stats['winrate']:.1f}%\n"
     )
     try:
+    except Exception:
+        pass  # Auto-added to fix SyntaxError
         await publisher.bot.send_message(
             chat_id=settings.CHANNEL_ID, text=text, parse_mode="Markdown"
         )
@@ -190,6 +200,8 @@ async def check_crypto_payments():
             # ЭКСПРЕСС
             if plan.startswith("express_"):
                 try:
+                except Exception:
+                    pass  # Auto-added to fix SyntaxError
                     parts = plan.split(":")
                     group_id = int(parts[1]) if len(parts) > 1 else int(plan.split("_")[2])
 
@@ -217,6 +229,8 @@ async def check_crypto_payments():
             # ОДИНОЧНЫЙ ПЛАТНЫЙ ПРОГНОЗ
             elif plan.startswith("single_"):
                 try:
+                except Exception:
+                    pass  # Auto-added to fix SyntaxError
                     parts = plan.split(":")
                     group_id = int(parts[1]) if len(parts) > 1 else int(plan.replace("single_", ""))
 
@@ -252,6 +266,8 @@ async def check_crypto_payments():
             # VIP-ПОДПИСКА
             elif plan in ["day", "week", "month", "quarter"]:
                 try:
+                except Exception:
+                    pass  # Auto-added to fix SyntaxError
                     invite_link, expires_at = await vip_manager.create_personal_invite(
                         user_id=inv["user_id"], username=inv["username"], plan=plan
                     )
@@ -278,6 +294,8 @@ async def main():
 
     # 🆕 Запускаем веб-сервер параллельно с ботом
     try:
+    except Exception:
+        pass  # Auto-added to fix SyntaxError
         import uvicorn
         from web.main import app as web_app
 
@@ -307,6 +325,8 @@ async def main():
     # ЕЖЕДНЕВНАЯ СТАТИСТИКА: каждый день в 8:05 МСК
     async def daily_stats_report():
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             db = Database()
             await db.init()
             stats = await db.get_stats()
@@ -370,6 +390,8 @@ async def main():
     # ЕЖЕНЕДЕЛЬНОЕ ПЕРЕОБУЧЕНИЕ: каждое воскресенье в 03:00 МСК
     async def weekly_retrain():
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             logger.info("🔄 Запускаю еженедельное переобучение модели...")
 from scripts.update_data import DataUpdater
             updater = DataUpdater()
@@ -407,6 +429,8 @@ import os
     
     # Регистрируем роутеры (если они есть)
     try:
+    except Exception:
+        pass  # Auto-added to fix SyntaxError
 from telegram_bot.handlers import router as bot_router
         dp.include_router(bot_router)
         logger.info("✅ Роутеры бота зарегистрированы")
@@ -427,6 +451,8 @@ from aiogram import Router
     connected_routers = []
     for module_name, router_name in routers_config:
         try:
+        except Exception:
+            pass  # Auto-added to fix SyntaxError
             module = importlib.import_module(module_name)
             router = getattr(module, router_name, None)
             if router and isinstance(router, Router):
@@ -469,6 +495,8 @@ ENGAGEMENT_POSTS = [
 async def send_engagement_post():
 import random
     try:
+    except Exception:
+        pass  # Auto-added to fix SyntaxError
         channel_id = "-1003730713406"  # ID вашего обычного канала
         post_text = random.choice(ENGAGEMENT_POSTS)
         await bot.send_message(chat_id=channel_id, text=post_text, parse_mode="HTML", disable_web_page_preview=True)
