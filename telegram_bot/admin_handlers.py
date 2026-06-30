@@ -131,6 +131,7 @@ async def btn_publish(message: Message):
     
     from main import run_pipeline
     menu = get_menu_for_user(message.from_user.id)
+    # ИСПРАВЛЕНО ЗДЕСЬ: убран случайный разрыв строки
     status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b> Это может занять до 1 минуты.", parse_mode="HTML", reply_markup=menu)
     
     try:
@@ -139,21 +140,21 @@ async def btn_publish(message: Message):
         
         # Анализируем результат
         if isinstance(result, int) and result > 0:
-            await status_msg.edit_text(f"✅ <b>Успех!</b>
-Опубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
+            # ИСПРАВЛЕНО ЗДЕСЬ
+            await status_msg.edit_text(f"✅ <b>Успех!</b>\nОпубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
         elif isinstance(result, list) and len(result) > 0:
-            await status_msg.edit_text(f"✅ <b>Успех!</b>
-Опубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
+            # ИСПРАВЛЕНО ЗДЕСЬ
+            await status_msg.edit_text(f"✅ <b>Успех!</b>\nОпубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
         else:
-            await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>
-Возможно, в выбранных лигах сейчас нет игр на сегодня-завтра.", parse_mode="HTML")
+            # ИСПРАВЛЕНО ЗДЕСЬ
+            await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>\nВозможно, в выбранных лигах сейчас нет игр на сегодня-завтра.", parse_mode="HTML")
             
     except Exception as e:
         import traceback
         traceback.print_exc()
         error_text = str(e)[:500] # Обрезаем длинные ошибки
-        await status_msg.edit_text(f"❌ <b>Критическая ошибка:</b>
-<code>{error_text}</code>", parse_mode="HTML")
+        # ИСПРАВЛЕНО ЗДЕСЬ
+        await status_msg.edit_text(f"❌ <b>Критическая ошибка:</b>\n<code>{error_text}</code>", parse_mode="HTML")
 
 
 @admin_router.message(F.text == "📈 Общая статистика")
@@ -412,19 +413,19 @@ async def cmd_publish(message: Message):
     try:
         result = await run_pipeline()
         if isinstance(result, int) and result > 0:
-            await status_msg.edit_text(f"✅ <b>Успех!</b>
-Опубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
+            # ИСПРАВЛЕНО ЗДЕСЬ
+            await status_msg.edit_text(f"✅ <b>Успех!</b>\nОпубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
         elif isinstance(result, list) and len(result) > 0:
-            await status_msg.edit_text(f"✅ <b>Успех!</b>
-Опубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
+            # ИСПРАВЛЕНО ЗДЕСЬ
+            await status_msg.edit_text(f"✅ <b>Успех!</b>\nОпубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
         else:
             await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>", parse_mode="HTML")
     except Exception as e:
         import traceback
         traceback.print_exc()
         error_text = str(e)[:500]
-        await status_msg.edit_text(f"❌ <b>Ошибка:</b>
-<code>{error_text}</code>", parse_mode="HTML")
+        # ИСПРАВЛЕНО ЗДЕСЬ
+        await status_msg.edit_text(f"❌ <b>Ошибка:</b>\n<code>{error_text}</code>", parse_mode="HTML")
 
 
 @admin_router.message(Command("follow"))
@@ -609,7 +610,7 @@ async def cmd_menu(message: Message):
 @admin_router.callback_query(F.data == "show_vip_menu")
 async def show_vip_menu(callback: CallbackQuery):
     text = (
-        "👑 <b>VIP-ПОДПИСКА</b>\n\n"
+        "👑 <b>VIP-POДПИСКА</b>\n\n"
         "🎯 Эксклюзивные прогнозы с уверенностью >80%\n"
         "🔥 Доступ к закрытому VIP-каналу\n\n"
         "💰 <b>Выберите тариф:</b>\n"
