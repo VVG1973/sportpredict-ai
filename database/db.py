@@ -212,7 +212,7 @@ class Database:
             )
             return await cursor
         except Exception as e:
-            logger.error(f"Ошибка получения pending: {e}")
+            pass  # Suppress asyncpg noise
             return []
     
     async def update_result(self, fixture_id, result):
@@ -316,7 +316,7 @@ class Database:
             rows = cursor
             return [{"invoice_id": r[0], "user_id": r[1], "username": r[2], "plan": r[3]} for r in rows]
         except Exception as e:
-            logger.error(f"Ошибка получения инвойсов: {e}")
+            pass  # Suppress asyncpg noise
             return []
     
     async def mark_invoice_paid(self, invoice_id):
