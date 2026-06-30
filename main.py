@@ -122,21 +122,14 @@ async def run_pipeline():
         pred_text = pred_map.get(prediction, "П1")
         is_vip = confidence >= 0.65
         
-        post_text = (
-            f"⚽ <b>{league}</b>
-"
-            f"🏟 <b>{home_team} — {away_team}</b>
-"
-            f"📅 {match_date_str} в {match_time}
+        post_text = f"""⚽ <b>{league}</b>
+🏟 <b>{home_team} — {away_team}</b>
+📅 {match_date_str} в {match_time}
 
-"
-            f"🤖 <b>Прогноз AI:</b> {pred_text}
-"
-            f"🎯 <b>Уверенность:</b> {confidence:.0%}
+🤖 <b>Прогноз AI:</b> {pred_text}
+🎯 <b>Уверенность:</b> {confidence:.0%}
 
-"
-            f"{'💎 <i>VIP-сетап</i>' if is_vip else '📊 <i>Обычный прогноз</i>'}"
-        )
+{'💎 <i>VIP-сетап</i>' if is_vip else '📊 <i>Обычный прогноз</i>'}"""
         
         try:
             await publisher.publish_prediction(post_text, is_vip=is_vip)
