@@ -55,12 +55,35 @@ async def run_pipeline():
         manager = SubscriptionManager()
         await manager.init() # здесь у тебя была случайная буква 'q', я её удалил
 
-        matches = await parser.fetch_upcoming_matches(count=20)
+            matches = await parser.fetch_upcoming_matches(count=20)
 
-        if not matches:
-            logger.info("📭 Матчей не найдено.")
-            await publisher.close()
-            return 0
+    # 🛡️ ФИЛЬТР ОТ ФЕЙКОВЫХ (MOCK) МАТЧЕЙ
+    real_matches = []
+    for m in matches:
+        fid = m.get("fixture", {}).get("id")
+        # У реальных матчей API-Football ID всегда большое число (например, 1000000+)
+        if fid and isinstance(fid, int) and fid > 10000:
+            real_matches.append(m)
+            
+    matches = real_matches
+
+    if not matches:
+        logger.info("📭 Реальных матчей не найдено. Фейковые матчи отключены (защита от бана).")
+        # ОПОВЕЩАЕМ АДМИНА В ЛИЧКУ
+        try:
+            from telegram_bot.event_publisher import TelegramPublisher
+            admin_publisher = TelegramPublisher()
+            await admin_publisher.bot.send_message(
+                chat_id=settings.ADMIN_ID,
+                text="⚠️ <b>Публикация отменена:</b> Нет реальных матчей на сегодня. Бот не спамит фейками.",
+                parse_mode="HTML"
+            )
+            await admin_publisher.close()
+        except Exception as e:
+            logger.error(f"Не удалось отправить сообщение админу: {e}")
+            
+        await publisher.close()
+        return 0
 
         logger.info(f"📊 Найдено матчей: {len(matches)}")
 
