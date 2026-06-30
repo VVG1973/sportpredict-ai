@@ -36,7 +36,7 @@ ml_model = PredictionModel()
 async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
 from analyzers.feature_extractor import extract_features
-    from data_collectors.api_football_parser import APIFootballParser
+from data_collectors.api_football_parser import APIFootballParser
     
         api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     publisher = TelegramPublisher()
@@ -62,7 +62,7 @@ from analyzers.feature_extractor import extract_features
 
     
     # 🆕 СТРОГИЙ ФИЛЬТР: только матчи на сегодня и завтра
-    from datetime import datetime, timedelta
+from datetime import datetime, timedelta
     today = datetime.now().date()
     tomorrow = today + timedelta(days=1)
     
@@ -86,7 +86,7 @@ from analyzers.feature_extractor import extract_features
     try:
         hist_path = Path("data/historical/all_matches_clean.csv")
         if hist_path.exists():
-            import pandas as pd
+import pandas as pd
             historical_df = pd.read_csv(hist_path, encoding="utf-8", low_memory=False)
             historical_df["Date"] = pd.to_datetime(historical_df["Date"], errors="coerce")
             logger.info(f"📚 Загружено {len(historical_df)} исторических матчей для анализа формы")
@@ -112,7 +112,7 @@ from analyzers.feature_extractor import extract_features
             match_date_str = m.get("date", "")
             fixture_id = m.get("fixture_id", f"api_{home_team}_{away_team}")
         
-        import pandas as pd
+import pandas as pd
         match_date = pd.to_datetime(match_date_str, errors="coerce")
 
         # 🆕 ФОРМИРУЕМ СЛОВАРЬ ДЛЯ ML-МОДЕЛИ (правильный формат!)
@@ -210,7 +210,7 @@ from analyzers.feature_extractor import extract_features
         }
 
         # Категоризация на основе уверенности ML-модели
-        from config import settings
+from config import settings
         if pred["confidence"] >= settings.VIP_CONFIDENCE_THRESHOLD:
             vip_predictions.append(pred)
         elif pred["confidence"] >= 0.71:
@@ -383,7 +383,7 @@ from analyzers.feature_extractor import extract_features
 
     if admin_express_details:
         try:
-            from config import settings
+from config import settings
             admin_text = "🔓 <b>ДЕТАЛИ ЭКСПРЕССОВ (только для вас)</b>\n\n"
             for express in admin_express_details:
                 admin_text += f"<b>{express['title']}</b>\n"
@@ -568,8 +568,8 @@ async def main():
 
     # 🆕 Запускаем веб-сервер параллельно с ботом
     try:
-        import uvicorn
-        from web.main import app as web_app
+import uvicorn
+from web.main import app as web_app
 
         config = uvicorn.Config(
             web_app,
@@ -661,10 +661,10 @@ async def main():
     async def weekly_retrain():
         try:
             logger.info("🔄 Запускаю еженедельное переобучение модели...")
-            from scripts.update_data import DataUpdater
+from scripts.update_data import DataUpdater
             updater = DataUpdater()
             await updater.update()
-            from scripts.retrain_model import ModelRetrainer
+from scripts.retrain_model import ModelRetrainer
             retrainer = ModelRetrainer()
             retrainer.retrain()
             global ml_model
@@ -689,22 +689,22 @@ async def main():
 
 
     # === ЗАПУСК TELEGRAM ПОЛЛИНГА ===
-    from aiogram import Bot
-    from config import settings
+from aiogram import Bot
+from config import settings
     
-    import os
+import os
     bot = Bot(token=(os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')))
     
     # Регистрируем роутеры (если они есть)
     try:
-        from telegram_bot.handlers import router as bot_router
+from telegram_bot.handlers import router as bot_router
         dp.include_router(bot_router)
         logger.info("✅ Роутеры бота зарегистрированы")
     except Exception as e:
         logger.warning(f"⚠️ Не удалось зарегистрировать роутеры: {e}")
     # === ПОДКЛЮЧЕНИЕ ВСЕХ РОУТЕРОВ TELEGRAM-БОТА ===
-    import importlib
-    from aiogram import Router
+import importlib
+from aiogram import Router
     
     # Список всех модулей и их роутеров (в порядке приоритета)
     routers_config = [
@@ -757,7 +757,7 @@ ENGAGEMENT_POSTS = [
 ]
 
 async def send_engagement_post():
-    import random
+import random
     try:
         channel_id = "-1003730713406"  # ID вашего обычного канала
         post_text = random.choice(ENGAGEMENT_POSTS)
