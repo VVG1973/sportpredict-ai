@@ -35,25 +35,20 @@ ml_model = PredictionModel()
 
 async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
-    from data_collectors.multi_sport_parser import MultiSportParser
-    from analyzers.feature_extractor import extract_features
+        from analyzers.feature_extractor import extract_features
     from data_collectors.api_football_parser import APIFootballParser
     
-    parser = MultiSportParser(min_confidence=0.70)
-    api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
+        api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     publisher = TelegramPublisher()
     db = Database()
     await db.init()
     manager = SubscriptionManager()
     await manager.init()
 
-    # Получаем матчи из MultiSportParser
-    matches = await parser.fetch_upcoming_matches(count=20)
-    
-        
+        matches = []
     # 🆕 Добавляем матчи из API-Football (летние лиги)
     try:
-        api_matches = await api_parser.fetch_upcoming_matches(days=3)
+        api_matches = await api_parser.fetch_upcoming_matches(days=2)
         if api_matches:
             matches.extend(api_matches)
             logger.info(f"🌍 Добавлено {len(api_matches)} матчей из API-Football")
@@ -64,6 +59,25 @@ async def run_pipeline():
         logger.info("📭 Матчей не найдено.")
         await publisher.close()
         return
+
+    
+    # 🆕 СТРОГИЙ ФИЛЬТР: только матчи на сегодня и завтра
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    tomorrow = today + timedelta(days=1)
+    
+    filtered_matches = []
+    for m in matches:
+        match_date_str = m.get("date", "")
+        try:
+            match_date = datetime.strptime(match_date_str[:10], "%Y-%m-%d").date()
+            if match_date in [today, tomorrow]:
+                filtered_matches.append(m)
+        except:
+            continue
+    
+    matches = filtered_matches
+    logger.info(f"📅 После фильтра по датам осталось матчей: {len(matches)}")
 
     logger.info(f"📊 Найдено матчей: {len(matches)}")
 
