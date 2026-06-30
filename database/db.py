@@ -65,14 +65,14 @@ class Database:
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 fixture_id TEXT UNIQUE,
                 home_team TEXT,
                 away_team TEXT,
                 match_date TEXT,
                 prediction TEXT,
-                confidence REAL,
-                odds REAL,
+                confidence DOUBLE PRECISION,
+                odds DOUBLE PRECISION,
                 result TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -88,7 +88,7 @@ class Database:
         # Таблица подписок
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER UNIQUE,
                 username TEXT,
                 plan TEXT,
@@ -102,10 +102,10 @@ class Database:
         # Таблица экспресс-групп
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS express_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 events_json TEXT,
-                total_odds REAL,
-                price REAL,
+                total_odds DOUBLE PRECISION,
+                price DOUBLE PRECISION,
                 events_count INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -114,12 +114,12 @@ class Database:
         # Таблица инвойсов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 invoice_id TEXT UNIQUE,
                 user_id INTEGER,
                 username TEXT,
                 plan TEXT,
-                amount REAL,
+                amount DOUBLE PRECISION,
                 status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -128,7 +128,7 @@ class Database:
         # Таблица любимых команд
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS user_favorites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 team_name TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -140,7 +140,7 @@ class Database:
         # Таблица рефералов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 referrer_id INTEGER NOT NULL,
                 user_id INTEGER UNIQUE NOT NULL,
                 username TEXT,
@@ -181,8 +181,8 @@ class Database:
                 home_team TEXT,
                 away_team TEXT,
                 prediction TEXT,
-                confidence REAL,
-                odds REAL,
+                confidence DOUBLE PRECISION,
+                odds DOUBLE PRECISION,
                 result TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -340,7 +340,7 @@ class Database:
     
     async def get_expired_subscriptions(self):
         try:
-            now = datetime.now().isoformat()
+            now = TIMESTAMP.now().isoformat()
             cursor = await self.conn.execute(
                 "SELECT user_id, username FROM subscriptions WHERE status = 'active' AND expires_at < ?", (now,)
             )
