@@ -168,6 +168,23 @@ async def run_pipeline():
             logger.error(f"❌ Ошибка ML-прогноза для {home_team} vs {away_team}: {e}")
             ml_result = {"prediction": "H", "confidence": 0.5}
 
+        # 🆕 УМНАЯ КОРРЕКТИРОВКА НА ОСНОВЕ КОЭФФИЦИЕНТОВ (Bookmaker Odds Override)
+        home_odds = float(match_data.get("home_odds", 0) or 0)
+        draw_odds = float(match_data.get("draw_odds", 0) or 0)
+        away_odds = float(match_data.get("away_odds", 0) or 0)
+        
+        if home_odds > 0 and draw_odds > 0 and away_odds > 0:
+            min_odds = min(home_odds, draw_odds, away_odds)
+            # Если модель выдает ничью или неуверенный прогноз (< 45%), используем мудрость букмекеров
+            if ml_result.get("prediction") == "D" or ml_result.get("confidence", 0) < 0.45:
+                if min_odds == home_odds:
+                    ml_result["prediction"] = "H"
+                    ml_result["confidence"] = max(ml_result.get("confidence", 0), 0.60)
+                elif min_odds == away_odds:
+                    ml_result["prediction"] = "A"
+                    ml_result["confidence"] = max(ml_result.get("confidence", 0), 0.60)
+
+
         # Маппинг предсказания в русский формат
         outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
         predicted_outcome = ml_result["prediction"]
