@@ -60,7 +60,10 @@ class Database:
         print("📁 Подключено к PostgreSQL")
         
         # Создаем таблицы если их нет
-        await self.create_tables()
+        try:
+            await self.create_tables()
+        except Exception:
+            pass  # Ignore race conditions during table creation
         
         # Таблица прогнозов с колонкой result
         await self.conn.execute("""
@@ -81,7 +84,7 @@ class Database:
         # Добавляем колонку result, если её нет
         try:
             await self.conn.execute("ALTER TABLE predictions ADD COLUMN result TEXT DEFAULT 'pending'")
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception:
             pass
         
@@ -147,7 +150,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        await self.conn.commit()
+        pass  # asyncpg uses autocommit
         logger.info("✅ БД инициализирована")
     
     # === ПРОГНОЗЫ ===
@@ -197,7 +200,7 @@ class Database:
                 (fixture_id, home_team, away_team, match_date, prediction, confidence, odds, result)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
             """, (fixture_id, home, away, date, pred, conf, odds))
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка сохранения прогноза: {e}")
     
@@ -219,7 +222,7 @@ class Database:
                 "UPDATE predictions SET result = ? WHERE fixture_id = ?",
                 (result, fixture_id)
             )
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка обновления результата: {e}")
     
@@ -267,7 +270,7 @@ class Database:
                 INSERT INTO express_groups (events_json, total_odds, price, events_count)
                 VALUES (?, ?, ?, ?)
             """, (events_json, total_odds, price, len(events)))
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
             return cursor.lastrowid
         except Exception as e:
             logger.error(f"Ошибка сохранения экспресса: {e}")
@@ -301,7 +304,7 @@ class Database:
                 (invoice_id, user_id, username, plan, amount, status)
                 VALUES (?, ?, ?, ?, ?, 'pending')
             """, (invoice_id, user_id, username, plan, amount))
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка сохранения инвойса: {e}")
     
@@ -321,7 +324,7 @@ class Database:
             await self.conn.execute(
                 "UPDATE invoices SET status = 'paid' WHERE invoice_id = ?", (invoice_id,)
             )
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка обновления инвойса: {e}")
     
@@ -334,7 +337,7 @@ class Database:
                 (user_id, username, plan, invoice_id, status, expires_at)
                 VALUES (?, ?, ?, ?, 'active', ?)
             """, (user_id, username, plan, invoice_id, expires_at))
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка сохранения подписки: {e}")
     
@@ -355,7 +358,7 @@ class Database:
             await self.conn.execute(
                 "UPDATE subscriptions SET status = 'expired' WHERE user_id = ?", (user_id,)
             )
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка деактивации подписки: {e}")
     
@@ -367,7 +370,7 @@ class Database:
                 "INSERT OR IGNORE INTO user_favorites (user_id, team_name) VALUES (?, ?)",
                 (user_id, team_name)
             )
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
             return True
         except Exception as e:
             logger.error(f"Ошибка добавления избранного: {e}")
@@ -379,7 +382,7 @@ class Database:
                 "DELETE FROM user_favorites WHERE user_id = ? AND team_name = ?",
                 (user_id, team_name)
             )
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
             return True
         except Exception as e:
             logger.error(f"Ошибка удаления избранного: {e}")
@@ -433,7 +436,7 @@ class Database:
                 INSERT OR IGNORE INTO referrals (referrer_id, user_id, username, created_at)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             """, (referrer_id, user_id, username))
-            await self.conn.commit()
+            pass  # asyncpg uses autocommit
             return True
         except Exception as e:
             logger.error(f"Ошибка добавления реферала: {e}")

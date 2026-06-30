@@ -43,7 +43,7 @@ async def extend_user_vip(user_id: int, days: int = 1):
                 VALUES (?, ?, 'referral', 'active', ?)
             """, (user_id, f"user_{user_id}", expires_at.isoformat()))
         
-        await db.conn.commit()
+        pass  # asyncpg uses autocommit
         logger.info(f"✅ VIP продлён для {user_id} на {days} дней")
         return True
     except Exception as e:
