@@ -492,7 +492,7 @@ async def main():
         except Exception as e:
             logger.error(f"❌ Ошибка еженедельного переобучения: {e}")
 
-    scheduler.add_job(weekly_retrain, "cron", day_of_week="sun", hour=3, minute=0, id="weekly_retrain")
+    # scheduler.add_job(weekly_retrain, "cron", day_of_week="sun", hour=3, minute=0, id="weekly_retrain")
 
     publisher = TelegramPublisher()
     dp = Dispatcher()
