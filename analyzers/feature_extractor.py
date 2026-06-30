@@ -7,7 +7,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_features(match_data: dict, feature_cols: list) -> dict:
+def extract_features(match_data: dict, feature_cols: list = None) -> dict:
+    if not feature_cols:
+        return match_data
     """
     Принимает базовые данные матча и список признаков, которые ждет модель.
     Возвращает словарь с вычисленными значениями для всех признаков.

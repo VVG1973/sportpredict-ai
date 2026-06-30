@@ -147,7 +147,9 @@ async def run_pipeline():
 
         # 🆕 ВЫЗЫВАЕМ ML-МОДЕЛЬ С СЛОВАРЕМ (правильно!)
         try:
-            ml_result = ml_model.predict(match_data)
+            feature_cols = getattr(getattr(ml_model, 'model', ml_model), 'feature_cols', None)
+            enriched_match_data = extract_features(match_data, feature_cols)
+            ml_result = ml_model.predict(enriched_match_data)
         except Exception as e:
             logger.error(f"❌ Ошибка ML-прогноза для {home_team} vs {away_team}: {e}")
             ml_result = {"prediction": "H", "confidence": 0.5}
