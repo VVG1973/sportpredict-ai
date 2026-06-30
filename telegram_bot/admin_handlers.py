@@ -123,16 +123,38 @@ async def cmd_start(message: Message):
 
 @admin_router.message(F.text == "🚀 Опубликовать прогнозы")
 async def btn_publish(message: Message):
-    """Кнопка публикации (только для админа)"""
+    """Кнопка публикации с диагностикой"""
+    print(f"🔵 [BTN] Запрос от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
     if message.from_user.id != settings.ADMIN_ID:
-        await message.answer("❌ Эта функция доступна только админу.")
+        await message.answer(f"❌ Доступ запрещен. Ваш ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
         return
     
     from main import run_pipeline
     menu = get_menu_for_user(message.from_user.id)
-    await message.answer("🚀 Запускаю публикацию прогнозов...", reply_markup=menu)
-    await run_pipeline()
-    await message.answer("✅ Готово! Проверь канал и личные сообщения.", reply_markup=menu)
+    status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b>
+Это может занять до 1 минуты.", parse_mode="HTML", reply_markup=menu)
+    
+    try:
+        # Запускаем пайплайн
+        result = await run_pipeline()
+        
+        # Анализируем результат
+        if isinstance(result, int) and result > 0:
+            await status_msg.edit_text(f"✅ <b>Успех!</b>
+Опубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
+        elif isinstance(result, list) and len(result) > 0:
+            await status_msg.edit_text(f"✅ <b>Успех!</b>
+Опубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
+        else:
+            await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>
+Возможно, в выбранных лигах сейчас нет игр на сегодня-завтра.", parse_mode="HTML")
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_text = str(e)[:500] # Обрезаем длинные ошибки
+        await status_msg.edit_text(f"❌ <b>Критическая ошибка:</b>
+<code>{error_text}</code>", parse_mode="HTML")
 
 
 @admin_router.message(F.text == "📈 Общая статистика")
@@ -378,15 +400,32 @@ async def cmd_stats(message: Message):
 
 @admin_router.message(Command("publish"))
 async def cmd_publish(message: Message):
+    """Команда /publish с диагностикой"""
+    print(f"🔵 [CMD] /publish от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
     if message.from_user.id != settings.ADMIN_ID:
-        await message.answer("❌ Эта команда доступна только админу.")
+        await message.answer(f"❌ Доступ запрещен. Ваш ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
         return
     
     from main import run_pipeline
     menu = get_menu_for_user(message.from_user.id)
-    await message.answer("🚀 Запускаю публикацию прогнозов...", reply_markup=menu)
-    await run_pipeline()
-    await message.answer("✅ Готово!", reply_markup=menu)
+    status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b>", parse_mode="HTML", reply_markup=menu)
+    
+    try:
+        result = await run_pipeline()
+        if isinstance(result, int) and result > 0:
+            await status_msg.edit_text(f"✅ <b>Успех!</b>
+Опубликовано прогнозов: <b>{result}</b>", parse_mode="HTML")
+        elif isinstance(result, list) and len(result) > 0:
+            await status_msg.edit_text(f"✅ <b>Успех!</b>
+Опубликовано прогнозов: <b>{len(result)}</b>", parse_mode="HTML")
+        else:
+            await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>", parse_mode="HTML")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_text = str(e)[:500]
+        await status_msg.edit_text(f"❌ <b>Ошибка:</b>
+<code>{error_text}</code>", parse_mode="HTML")
 
 
 @admin_router.message(Command("follow"))
