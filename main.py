@@ -39,7 +39,6 @@ async def run_pipeline():
     from data_collectors.api_football_parser import APIFootballParser
     
     parser = MultiSportParser(min_confidence=0.70)
-    api_football_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     api_parser = APIFootballParser()  # 🆕 API-Football для летних лиг
     publisher = TelegramPublisher()
     db = Database()
@@ -50,18 +49,10 @@ async def run_pipeline():
     # Получаем матчи из MultiSportParser
     matches = await parser.fetch_upcoming_matches(count=20)
     
-    # 🆕 Добавляем реальные матчи из API-Football (летние лиги)
-    try:
-        api_matches = api_football_parser.get_matches_for_dates(days_ahead=3)
-        if api_matches:
-            matches.extend(api_matches)
-            logger.info(f"🌍 Добавлено {len(api_matches)} реальных матчей из API-Football")
-    except Exception as e:
-        logger.warning(f"⚠️ Ошибка загрузки API-Football: {e}")
-    
+        
     # 🆕 Добавляем матчи из API-Football (летние лиги)
     try:
-        api_matches = api_parser.get_matches_for_dates(days_ahead=3)
+        api_matches = await api_parser.fetch_upcoming_matches(days=3)
         if api_matches:
             matches.extend(api_matches)
             logger.info(f"🌍 Добавлено {len(api_matches)} матчей из API-Football")
