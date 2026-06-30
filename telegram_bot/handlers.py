@@ -117,88 +117,13 @@ async def cmd_help(message: Message):
 
 @router.message(F.text == "📊 Прогноз на сегодня")
 async def button_today_forecast(message: Message):
-    """Обработчик кнопки 'Прогноз на сегодня'"""
-    await message.answer(
-        "📊 <b>Прогнозы на сегодня</b>\n\n"
-        "⏳ Генерирую прогнозы...\n\n"
-        "<i>Прогнозы публикуются автоматически в 8:00 МСК</i>\n"
-        "Или используйте /stats для просмотра статистики",
-        parse_mode="HTML"
-    )
-
-
-@router.message(F.text == "💎 VIP прогнозы")
-async def button_vip_forecast(message: Message):
-    """Обработчик кнопки 'VIP прогнозы'"""
-    await message.answer(
-        "💎 <b>VIP прогнозы</b>\n\n"
-        "🎯 Точность: 70%+\n"
-        "📊 Анализ: 25+ признаков\n"
-        "⚡ Обновление: ежедневно в 8:00 МСК\n\n"
-        "💰 <b>Тарифы:</b>\n"
-        "• 1 день - 149₽\n"
-        "• 7 дней - 499₽ (экономия 52%)\n"
-        "• 30 дней - 1499₽ (экономия 66%)\n\n"
-        "Используйте /vip для покупки",
-        parse_mode="HTML"
-    )
-
-
-@router.message(F.text == "⭐ Избранные команды")
-async def button_favorites(message: Message):
-    """Обработчик кнопки 'Избранные команды'"""
-    # Импортируем и вызываем обработчик из favorites_handlers
-    try:
-        from telegram_bot.favorites import cmd_favorites
-        await cmd_favorites(message)
-    except Exception as e:
-        logger.error(f"Ошибка вызова favorites: {e}")
-        await message.answer("❌ Ошибка. Используйте /favorites")
-
-
-@router.message(F.text == "👥 Пригласить друга")
-async def button_invite(message: Message):
-    """Обработчик кнопки 'Пригласить друга'"""
-    try:
-        from telegram_bot.referral_handlers import cmd_invite
-        await cmd_invite(message)
-    except Exception as e:
-        logger.error(f"Ошибка вызова invite: {e}")
-        await message.answer("❌ Ошибка. Используйте /invite")
-
-
-@router.message(F.text == "📊 Моя реферальная программа")
-async def button_referral(message: Message):
-    """Обработчик кнопки 'Реферальная программа'"""
-    try:
-        from telegram_bot.referral_handlers import cmd_referral
-        await cmd_referral(message)
-    except Exception as e:
-        logger.error(f"Ошибка вызова referral: {e}")
-        await message.answer("❌ Ошибка. Используйте /referral")
-
-
-@router.message(F.text == "💳 Купить VIP")
-async def button_buy_vip(message: Message):
-    """Обработчик кнопки 'Купить VIP'"""
-    await message.answer(
-        "💳 <b>Покупка VIP подписки</b>\n\n"
-        "Используйте /vip для просмотра тарифов и оплаты",
-        parse_mode="HTML"
-    )
-
-
-@router.message(F.text == "ℹ️ Помощь")
-async def button_help(message: Message):
-    """Обработчик кнопки 'Помощь'"""
-    await cmd_help(message)
-
-
-@router.message(F.text == "📈 Моя статистика")
-async def button_my_stats(message: Message):
-    """Обработчик кнопки 'Моя статистика'"""
-    await message.answer(
-        "📈 <b>Ваша статистика</b>\n\n"
-        "Используйте /stats для просмотра общей статистики прогнозов",
-        parse_mode="HTML"
-    )
+        await message.answer("⏳ Генерирую прогнозы... Это может занять 1-2 минуты.")
+        try:
+            from main import run_pipeline
+            predictions = await run_pipeline()
+            if predictions:
+                await message.answer(f"✅ Готово! Сгенерировано {len(predictions)} прогнозов и отправлено в канал.")
+            else:
+                await message.answer("⚠️ На сегодня нет матчей в выбранных лигах.")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка генерации: {e}")
