@@ -46,9 +46,10 @@ class RealXGModel:
             return
         
         try:
-            import joblib
+            import pickle
             # ...
-            data = joblib.load("data/models/model_real_xg.joblib") # обратите внимание на расширение .joblib
+            with open("ml_models/model_real_xg.pkl", "rb") as f:
+                data = pickle.load(f)
             
             self.model = data.get("model")
             self.feature_cols = data.get("feature_cols", [])
