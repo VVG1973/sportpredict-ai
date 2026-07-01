@@ -4,7 +4,8 @@
 54 признака: коэффициенты букмекеров + синтетический xG + реальный xG
 """
 import pickle
-import logging
+import json
+from xgboost import XGBClassifier
 from pathlib import Path
 import numpy as np
 from typing import Dict, Tuple
@@ -48,8 +49,23 @@ class RealXGModel:
         try:
             import pickle
             # ...
-            with open("ml_models/model_real_xg.pkl", "rb") as f:
-                data = pickle.load(f)
+            model_path = Path("ml_models/model_real_xg.json")
+            meta_path = Path("ml_models/model_real_xg.meta.json")
+
+            if not model_path.exists() or not meta_path.exists():
+                logger.error(f"❌ Файлы модели не найдены!")
+                # тут ваш код обработки ошибки (вероятно, return или raise)
+
+            # Загружаем нативную модель XGBoost
+            model = XGBClassifier()
+            model.load_model(model_path)
+
+             # Загружаем мета-данные
+             with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+# Собираем data так же, как это было при pickle, чтобы остальной код не сломался
+data["model"] = model 
             
             self.model = data.get("model")
             self.feature_cols = data.get("feature_cols", [])
