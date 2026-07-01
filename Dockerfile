@@ -9,7 +9,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Создаем пользователя
+RUN useradd -m -u 1000 appuser
+
+# СОЗДАЕМ ПАПКУ ДЛЯ VOLUME И ДАЕМ ПРАВА ПОЛЬЗОВАТЕЛЮ
+RUN mkdir -p /data && chown -R appuser:appuser /app /data
+
+# Переключаемся на пользователя
 USER appuser
 
 CMD ["python", "main.py"]
