@@ -429,7 +429,7 @@ class Database:
 
     # === РЕФЕРАЛЬНАЯ ПРОГРАММА ===
     
-        async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
+            async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
         """Добавить реферала"""
         try:
             await self.conn.execute("""
@@ -441,6 +441,7 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка добавления реферала: {e}")
             return False
+
     
     async def get_referral_by_user(self, user_id: int):
         """Получить реферала по user_id"""
