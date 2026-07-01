@@ -7,7 +7,7 @@
 """
 import pandas as pd
 import numpy as np
-import pickle
+import joblib
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -224,14 +224,14 @@ def train_model(features_df: pd.DataFrame) -> None:
     # Сохраняем модель
     model_dir = Path("data/models")
     model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "model_real.pkl"
+        # Лучше переименовать расширение файла с .pkl на .joblib, чтобы не было путаницы
+    model_path = model_dir / "model_real.joblib"
     
-    with open(model_path, "wb") as f:
-        pickle.dump({
-            "model": model,
-            "feature_cols": feature_cols,
-            "accuracy": accuracy,
-        }, f)
+    joblib.dump({
+        "model": model,
+        "feature_cols": feature_cols,
+        "accuracy": accuracy,
+    }, model_path)
     
     print(f"\n💾 Модель сохранена: {model_path}")
     print(f"📦 Размер: {model_path.stat().st_size / 1024:.1f} KB")
