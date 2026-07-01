@@ -4,7 +4,6 @@
 """
 import json
 import logging
-import pickle
 from pathlib import Path
 from datetime import datetime
 
@@ -155,18 +154,26 @@ class RealXGModelTrainer:
         logger.info(f"📊 Отчёт:\n{classification_report(y_test, y_pred, target_names=['П1', 'X', 'П2'])}")
         
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.model_path, "wb") as f:
-            pickle.dump({
-                "model": model,
-                "feature_cols": feature_cols,
-                "accuracy": accuracy,
-                "best_params": best_params,
-                "trained_at": datetime.now().isoformat(),
-                "is_honest": True,
-                "has_real_xg": True,
-            }, f)
         
-        logger.info(f"💾 Модель сохранена: {self.model_path}")
+        # 1. Сохраняем САМУ МОДЕЛЬ в нативном формате XGBoost (без предупреждений!)
+        xg_native_path = self.model_path.with_suffix(".json")
+        model.save_model(xg_native_path)
+        
+        # 2. Сохраняем МЕТА-ДАННЫЕ в обычный JSON
+        meta_path = self.model_path.with_suffix(".meta.json")
+        metadata = {
+            "feature_cols": feature_cols,
+            "accuracy": accuracy,
+            "best_params": best_params,
+            "trained_at": datetime.now().isoformat(),
+            "is_honest": True,
+            "has_real_xg": True,
+        }
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4, ensure_ascii=False)
+        
+        logger.info(f"💾 Модель сохранена: {xg_native_path}")
+        logger.info(f"💾 Мета-данные сохранены: {meta_path}")
         
         print("\n" + "=" * 60)
         print("🎯 РЕЗУЛЬТАТЫ")

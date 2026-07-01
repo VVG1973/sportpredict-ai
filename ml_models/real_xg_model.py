@@ -3,7 +3,7 @@
 Точность: 59.01% на тестовой выборке
 54 признака: коэффициенты букмекеров + синтетический xG + реальный xG
 """
-import pickle
+import logging
 import json
 from xgboost import XGBClassifier
 from pathlib import Path
@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 class RealXGModel:
     """Обёртка для обученной модели с реальными xG"""
     
-    def __init__(self, model_path: str = "ml_models/model_real_xg.pkl"):
-        self.model_path = Path(model_path)
+    def __init__(self):
         self.model = None
         self.feature_cols = None
         self.accuracy = 0.0
@@ -26,53 +25,29 @@ class RealXGModel:
         self._load_model()
     
     def _load_model(self):
-        """Загружает обученную модель из файла"""
-        possible_paths = [
-            self.model_path,
-            Path("ml_models/model_real_xg.pkl"),
-            Path("/app/ml_models/model_real_xg.pkl"),
-        ]
-        
-        loaded_path = None
-        for path in possible_paths:
-            if path.exists():
-                loaded_path = path
-                logger.info(f"✅ Модель найдена: {path}")
-                break
-        
-        if not loaded_path:
-            logger.error(f"❌ Модель не найдена ни в одном из путей:")
-            for p in possible_paths:
-                logger.error(f"   - {p}")
+        """Загружает обученную модель из нативных JSON файлов"""
+        model_path = Path("ml_models/model_real_xg.json")
+        meta_path = Path("ml_models/model_real_xg.meta.json")
+
+        if not model_path.exists() or not meta_path.exists():
+            logger.error(f"❌ Файлы модели не найдены! Ожидаю: {model_path} и {meta_path}")
             return
         
         try:
-            import pickle
-            # ...
-            model_path = Path("ml_models/model_real_xg.json")
-            meta_path = Path("ml_models/model_real_xg.meta.json")
-
-            if not model_path.exists() or not meta_path.exists():
-                logger.error(f"❌ Файлы модели не найдены!")
-                # тут ваш код обработки ошибки (вероятно, return или raise)
-
             # Загружаем нативную модель XGBoost
             model = XGBClassifier()
             model.load_model(model_path)
 
-             # Загружаем мета-данные
-             with open(meta_path, "r", encoding="utf-8") as f:
+            # Загружаем мета-данные
+            with open(meta_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
-# Собираем data так же, как это было при pickle, чтобы остальной код не сломался
-data["model"] = model 
             
-            self.model = data.get("model")
+            self.model = model
             self.feature_cols = data.get("feature_cols", [])
             self.accuracy = data.get("accuracy", 0.0)
             self.is_loaded = True
             
-            logger.info(f"✅ Модель загружена: {loaded_path}")
+            logger.info(f"✅ Модель загружена: {model_path}")
             logger.info(f"   Точность: {self.accuracy:.2%}")
             logger.info(f"   Признаков: {len(self.feature_cols)}")
         except Exception as e:
