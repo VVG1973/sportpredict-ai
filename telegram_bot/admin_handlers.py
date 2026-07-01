@@ -1,4 +1,6 @@
 from aiogram import Router, F
+import logging
+logger = logging.getLogger(__name__)
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -53,14 +55,137 @@ def get_menu_for_user(user_id: int) -> ReplyKeyboardMarkup:
         return ADMIN_MENU
     return USER_MENU
 
+# === РЕФЕРАЛЬНАЯ СИСТЕМА ===
+async def process_referral(invited_id: int, referrer_id: int, bot):
+    """Проверяет реферальную ссылку и начисляет +1 день VIP"""
+    if invited_id == referrer_id:
+        return  # Нельзя пригласить самого себя
+    
+    from database.db import Database
+    db = Database()
+    await db.init()
+    
+    try:
+        # Записываем факт перехода (ON CONFLICT чтобы не было ошибок при повторном клике)
+        await db.execute(
+            "INSERT INTO referrals (referrer_id, invited_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            referrer_id, invited_id
+        )
+        
+        # Проверяем, начисляли ли уже бонус за ЭТОГО приглашенного
+        record = await db.fetchrow(
+            "SELECT rewarded FROM referrals WHERE referrer_id = $1 AND invited_id = $2",
+            referrer_id, invited_id
+        )
+        
+        if record and not record["rewarded"]:
+            # Начисляем +1 день VIP (предполагается, что колонка называется expires_at)
+            await db.execute(
+                "UPDATE subscriptions SET expires_at = expires_at + INTERVAL '1 day' WHERE user_id = $1 AND expires_at > NOW()",
+                referrer_id
+            )
+            
+            # Отмечаем, что бонус за этого юзера выдан
+            await db.execute(
+                "UPDATE referrals SET rewarded = TRUE WHERE referrer_id = $1 AND invited_id = $2",
+                referrer_id, invited_id
+            )
+            
+            # Уведомляем реферера
+            try:
+                await bot.send_message(
+                    referrer_id, 
+                    "🎁 <b>Сработала рефералка!</b>\n\nВаш друг перешел по вашей ссылке. Вам начислен <b>+1 день VIP</b>!", 
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+    except Exception as e:
+        logger.error(f"Referral error: {e}")
+    finally:
+        await db.close()
 
+
+@admin_router.message(Command("ref"))
+async def cmd_ref(message: Message):
+    """Выдает реферальную ссылку"""
+    ref_link = f"https://t.me/spanalyt_bot?start=REF{message.from_user.id}"
+    
+    await message.answer(
+        "🎁 <b>Пригласи друга — получи VIP бесплатно!</b>\n\n"
+        "Отправьте эту ссылку другу. Когда он нажмет «START», вам автоматически начислят <b>1 день VIP-подписки</b>.\n\n"
+        f"🔗 <b>Ваша ссылка:</b>\n<code>{ref_link}</code>",
+        parse_mode="HTML"
+    )
+    # === РЕФЕРАЛЬНАЯ СИСТЕМА ===
+async def process_referral(invited_id: int, referrer_id: int, bot):
+    """Проверяет реферальную ссылку и начисляет +1 день VIP"""
+    if invited_id == referrer_id:
+        return  # Нельзя пригласить самого себя
+    
+    from database.db import Database
+    db = Database()
+    await db.init()
+    
+    try:
+        # Используем вашу уже готовую функцию из db.py!
+        # Если вернет True, значит человек впервые перешел по ссылке
+        success = await db.add_referral(referrer_id=referrer_id, user_id=invited_id, username="new_user")
+        
+        if success:
+            # Начисляем +1 день VIP (добавляем к текущей дате окончания)
+            await db.conn.execute(
+                "UPDATE subscriptions SET expires_at = expires_at + INTERVAL '1 day' WHERE user_id = $1 AND expires_at > NOW()",
+                referrer_id
+            )
+            
+            # Уведомляем реферера
+            try:
+                await bot.send_message(
+                    referrer_id, 
+                    "🎁 <b>Сработала рефералка!</b>\n\nВаш друг перешел по вашей ссылке. Вам начислен <b>+1 день VIP</b>!", 
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+    except Exception as e:
+        import logging
+        logging.error(f"Referral error: {e}")
+    finally:
+        await db.close()
+
+
+@admin_router.message(Command("ref"))
+async def cmd_ref(message: Message):
+    """Выдает реферальную ссылку"""
+    ref_link = f"https://t.me/spanalyt_bot?start=REF{message.from_user.id}"
+    
+    await message.answer(
+        "🎁 <b>Пригласи друга — получи VIP бесплатно!</b>\n\n"
+        "Отправьте эту ссылку другу. Когда он нажмет «START», вам автоматически начислят <b>1 день VIP-подписки</b>.\n\n"
+        f"🔗 <b>Ваша ссылка:</b>\n<code>{ref_link}</code>",
+        parse_mode="HTML"
+    )
 @admin_router.message(Command("start"))
 async def cmd_start(message: Message):
     """Обработчик /start"""
     menu = get_menu_for_user(message.from_user.id)
     
+    # Достаем payload (например, "vip" или "REF12345")
+    payload = message.text.split()[1] if len(message.text.split()) > 1 else ""
+    
+    # 🆕 РЕФЕРАЛЬНАЯ СИСТЕМА
+    if payload.startswith("REF_"):
+        try:
+            referrer_id = int(payload.replace("REF_", ""))
+            # Запускаем начисление бонуса в фоне
+            import asyncio
+            asyncio.create_task(process_referral(message.from_user.id, referrer_id, message.bot))
+        except:
+            pass
+    
     # VIP deep-link
-    if message.text and "vip" in message.text.lower():
+    elif "vip" in payload.lower():
         text = (
             "👑 <b>VIP-ПОДПИСКА</b>\n\n"
             "🎯 Эксклюзивные прогнозы с уверенностью >80%\n"
@@ -84,6 +209,10 @@ async def cmd_start(message: Message):
         ])
         await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         return
+    
+    # Админ
+    if message.from_user.id == settings.ADMIN_ID:
+        # ... дальше идет ваш старый код без изменений ...
     
     # Админ
     if message.from_user.id == settings.ADMIN_ID:

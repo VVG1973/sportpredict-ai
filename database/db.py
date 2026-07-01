@@ -429,14 +429,14 @@ class Database:
 
     # === РЕФЕРАЛЬНАЯ ПРОГРАММА ===
     
-    async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
+        async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
         """Добавить реферала"""
         try:
             await self.conn.execute("""
-                INSERT OR IGNORE INTO referrals (referrer_id, user_id, username, created_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (referrer_id, user_id, username))
-            pass  # asyncpg uses autocommit
+                INSERT INTO referrals (referrer_id, user_id, username, created_at)
+                VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO NOTHING
+            """, referrer_id, user_id, username)
             return True
         except Exception as e:
             logger.error(f"Ошибка добавления реферала: {e}")
