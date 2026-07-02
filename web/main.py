@@ -112,7 +112,7 @@ async def get_all_predictions(page: int = 1, per_page: int = 50) -> tuple:
         return [], 0, 0
 
 
-@app.get("/", response_class=HTMLResponse)@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def homepage(request: Request, page: int = Query(1, ge=1)):
     """Главная страница с пагинацией"""
     stats = await get_stats()
