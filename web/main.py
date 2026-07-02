@@ -80,10 +80,10 @@ async def get_all_predictions(page: int = 1, per_page: int = 50) -> tuple:
         
         offset = (page - 1) * per_page
         rows = await db.conn.fetch("""
-            SELECT fixture_id, home_team, away_team, match_date, 
+            SELECT fixture_id, home_team, away_team, created_at, 
                    prediction, confidence, odds, result
             FROM predictions
-            ORDER BY match_date DESC
+            ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
         """, per_page, offset)
         await db.close()
