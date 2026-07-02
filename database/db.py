@@ -1,71 +1,44 @@
 import asyncpg
 import os
-import aiosqlite
 import logging
+from datetime import datetime, timezone
+from typing import List, Dict, Optional
+
 logger = logging.getLogger(__name__)
-from pathlib import Path
 
-import os
-import os
-
-def _get_safe_db_path():
-    import os
-    import tempfile
-    from pathlib import Path
-
-    # 1. Пытаемся использовать Railway Volume
-    vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-    if vol:
-        try:
-            os.makedirs(vol, exist_ok=True)
-            test_file = Path(vol) / ".write_test"
-            test_file.touch(exist_ok=True)
-            test_file.unlink(missing_ok=True)
-            db_path = Path(vol) / "bot.db"
-            print(f"📁 Используем Railway Volume: {db_path}")
-            return str(db_path)
-        except Exception as e:
-            print(f"⚠️ Railway Volume {vol} недоступен для записи ({e}).")
-
-    # 2. Резервный вариант: локальная папка /app/data
-    app_data = Path("/app/data")
-    try:
-        app_data.mkdir(parents=True, exist_ok=True)
-        test_file = app_data / ".write_test"
-        test_file.touch(exist_ok=True)
-        test_file.unlink(missing_ok=True)
-        db_path = app_data / "bot.db"
-        print(f"📁 Используем локальную папку (эфемерную): {db_path}")
-        return str(db_path)
-    except Exception as e:
-        print(f"⚠️ /app/data недоступен ({e}).")
-
-    # 3. Крайний случай: /tmp
-    db_path = Path(tempfile.gettempdir()) / "bot.db"
-    print(f"📁 Используем /tmp (эфемерную): {db_path}")
-    return str(db_path)
 
 class Database:
     def __init__(self, db_path: str = "data/predictions.db"):
-        self.db_path = _get_safe_db_path()
-        self.conn = None
-    
+        # db_path больше не используется, т.к. работаем через PostgreSQL
+        self.conn: Optional[asyncpg.Connection] = None
+
     async def init(self):
         """Инициализация подключения к PostgreSQL"""
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
             raise ValueError("DATABASE_URL не установлен в переменных окружения!")
-        
+
         self.conn = await asyncpg.connect(db_url)
-        print("📁 Подключено к PostgreSQL")
-        
-        # Создаем таблицы если их нет
-        try:
-            await self.create_tables()
-        except Exception:
-            pass  # Ignore race conditions during table creation
-        
-        # Таблица прогнозов с колонкой result
+        logger.info("📁 Подключено к PostgreSQL")
+
+        # Создаём все таблицы одним вызовом
+        await self._create_all_tables()
+
+    async def _create_all_tables(self):
+        """Создаёт все таблицы в PostgreSQL если их нет"""
+
+        # Таблица пользователей
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                is_vip BOOLEAN DEFAULT FALSE,
+                vip_expires TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Таблица прогнозов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id SERIAL PRIMARY KEY,
@@ -80,14 +53,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Добавляем колонку result, если её нет
-        try:
-            await self.conn.execute("ALTER TABLE predictions ADD COLUMN result TEXT DEFAULT 'pending'")
-            pass  # asyncpg uses autocommit
-        except Exception:
-            pass
-        
+
         # Таблица подписок
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
@@ -101,7 +67,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Таблица экспресс-групп
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS express_groups (
@@ -113,7 +79,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Таблица инвойсов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
@@ -127,7 +93,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Таблица любимых команд
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS user_favorites (
@@ -138,7 +104,6 @@ class Database:
                 UNIQUE(user_id, team_name)
             )
         """)
-        
 
         # Таблица рефералов
         await self.conn.execute("""
@@ -150,114 +115,78 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        pass  # asyncpg uses autocommit
+
         logger.info("✅ БД инициализирована")
-    
+
     # === ПРОГНОЗЫ ===
-    
-
-    async def create_tables(self):
-        """Создает таблицы в PostgreSQL если их нет"""
-        await self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                username TEXT,
-                is_vip BOOLEAN DEFAULT FALSE,
-                vip_expires TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        await self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS favorite_teams (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT REFERENCES users(user_id),
-                team_name TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        await self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS predictions (
-                id SERIAL PRIMARY KEY,
-                match_id TEXT,
-                home_team TEXT,
-                away_team TEXT,
-                prediction TEXT,
-                confidence DOUBLE PRECISION,
-                odds DOUBLE PRECISION,
-                result TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        print("✅ Таблицы PostgreSQL созданы/проверены")
-        # Миграция: добавляем fixture_id если его нет
-        try:
-            await self.conn.execute("""
-                ALTER TABLE predictions 
-                ADD COLUMN IF NOT EXISTS fixture_id TEXT
-            """)
-        except Exception:
-            pass
-
 
     async def save_prediction(self, fixture_id, home, away, date, pred, conf, odds):
+        """Сохраняет прогноз. Если fixture_id уже есть — обновляет."""
         try:
             await self.conn.execute("""
-                INSERT OR REPLACE INTO predictions 
-                (fixture_id, home_team, away_team, match_date, prediction, confidence, odds, result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-            """, (fixture_id, home, away, date, pred, conf, odds))
-            pass  # asyncpg uses autocommit
+                INSERT INTO predictions (fixture_id, home_team, away_team, match_date, prediction, confidence, odds, result)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+                ON CONFLICT (fixture_id) DO UPDATE SET
+                    home_team = EXCLUDED.home_team,
+                    away_team = EXCLUDED.away_team,
+                    match_date = EXCLUDED.match_date,
+                    prediction = EXCLUDED.prediction,
+                    confidence = EXCLUDED.confidence,
+                    odds = EXCLUDED.odds,
+                    result = 'pending'
+            """, fixture_id, home, away, date, pred, conf, odds)
         except Exception as e:
             logger.error(f"Ошибка сохранения прогноза: {e}")
-    
+
     async def get_pending_predictions(self):
         """Возвращает список непроверенных прогнозов"""
         try:
-            cursor = await self.conn.execute(
-                "SELECT fixture_id, home_team, away_team, match_date, prediction FROM predictions WHERE result = 'pending' OR result IS NULL LIMIT 50"
-            )
-            return await cursor
+            rows = await self.conn.fetch("""
+                SELECT fixture_id, home_team, away_team, match_date, prediction
+                FROM predictions
+                WHERE result = 'pending' OR result IS NULL
+                LIMIT 50
+            """)
+            return [(r["fixture_id"], r["home_team"], r["away_team"], r["match_date"], r["prediction"]) for r in rows]
         except Exception as e:
-            pass  # Suppress asyncpg noise
+            logger.error(f"Ошибка получения pending прогнозов: {e}")
             return []
-    
+
     async def update_result(self, fixture_id, result):
         """Обновляет результат прогноза (win/loss)"""
         try:
             await self.conn.execute(
-                "UPDATE predictions SET result = ? WHERE fixture_id = ?",
-                (result, fixture_id)
+                "UPDATE predictions SET result = $1 WHERE fixture_id = $2",
+                result, fixture_id
             )
-            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка обновления результата: {e}")
-    
+
     # === СТАТИСТИКА ===
-    
+
     async def get_stats(self):
+        """Возвращает общую статистику прогнозов"""
         try:
-            cursor = await self.conn.fetch("SELECT COUNT(*) FROM predictions")
-            total = (await cursor.fetchone())[0]
-            
-            cursor_wins = await self.conn.execute("SELECT COUNT(*) FROM predictions WHERE result = 'win'")
-            wins = (await cursor_wins.fetchone())[0]
-            
-            cursor_losses = await self.conn.execute("SELECT COUNT(*) FROM predictions WHERE result = 'loss'")
-            losses = (await cursor_losses.fetchone())[0]
-            
+            row = await self.conn.fetchrow("""
+                SELECT
+                    COUNT(*) as total,
+                    COALESCE(SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END), 0) as wins,
+                    COALESCE(SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END), 0) as losses
+                FROM predictions
+            """)
+
+            total = row["total"] or 0
+            wins = row["wins"] or 0
+            losses = row["losses"] or 0
             pending = total - wins - losses
             checked = wins + losses
             winrate = (wins / checked * 100) if checked > 0 else 0.0
-            
-            # Рассчитываем ROI (примерный, на основе средних коэффициентов)
+
+            # Упрощённый расчёт ROI
             roi = 0.0
             if checked > 0:
-                # Упрощенный расчет: если винрейт > 50%, ROI положительный
-                roi = (winrate - 50) * 2  # Примерная формула
-            
+                roi = (winrate - 50) * 2
+
             return {
                 "total": total,
                 "wins": wins,
@@ -269,175 +198,183 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка статистики: {e}")
             return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0, "roi": 0.0}
-    
+
     # === ЭКСПРЕССЫ ===
-    
+
     async def save_express_group(self, events, total_odds, price):
+        """Сохраняет группу событий экспресса"""
         try:
+            import json
             events_json = json.dumps(events, ensure_ascii=False)
-            cursor = await self.conn.execute("""
+            row = await self.conn.fetchrow("""
                 INSERT INTO express_groups (events_json, total_odds, price, events_count)
-                VALUES (?, ?, ?, ?)
-            """, (events_json, total_odds, price, len(events)))
-            pass  # asyncpg uses autocommit
-            return cursor.lastrowid
+                VALUES ($1, $2, $3, $4)
+                RETURNING id
+            """, events_json, total_odds, price, len(events))
+            return row["id"]
         except Exception as e:
             logger.error(f"Ошибка сохранения экспресса: {e}")
             return None
-    
+
     async def get_express_group(self, group_id):
+        """Получает данные экспресса по ID"""
         try:
-            cursor = await self.conn.execute(
-                "SELECT events_json, total_odds, price, events_count FROM express_groups WHERE id = ?",
-                (group_id,)
+            import json
+            row = await self.conn.fetchrow(
+                "SELECT events_json, total_odds, price, events_count FROM express_groups WHERE id = $1",
+                group_id
             )
-            row = cursor.fetchone()
             if row:
                 return {
-                    "events": json.loads(row[0]),
-                    "total_odds": row[1],
-                    "price": row[2],
-                    "events_count": row[3]
+                    "events": json.loads(row["events_json"]),
+                    "total_odds": row["total_odds"],
+                    "price": row["price"],
+                    "events_count": row["events_count"]
                 }
             return None
         except Exception as e:
             logger.error(f"Ошибка получения экспресса: {e}")
             return None
-    
+
     # === ОПЛАТА (КРИПТО) ===
-    
+
     async def save_invoice(self, invoice_id, user_id, username, plan, amount):
+        """Сохраняет инвойс"""
         try:
             await self.conn.execute("""
-                INSERT OR REPLACE INTO invoices 
-                (invoice_id, user_id, username, plan, amount, status)
-                VALUES (?, ?, ?, ?, ?, 'pending')
-            """, (invoice_id, user_id, username, plan, amount))
-            pass  # asyncpg uses autocommit
+                INSERT INTO invoices (invoice_id, user_id, username, plan, amount, status)
+                VALUES ($1, $2, $3, $4, $5, 'pending')
+                ON CONFLICT (invoice_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    username = EXCLUDED.username,
+                    plan = EXCLUDED.plan,
+                    amount = EXCLUDED.amount
+            """, invoice_id, user_id, username, plan, amount)
         except Exception as e:
             logger.error(f"Ошибка сохранения инвойса: {e}")
-    
+
     async def get_pending_invoices(self):
+        """Получает список неоплаченных инвойсов"""
         try:
-            cursor = await self.conn.execute(
+            rows = await self.conn.fetch(
                 "SELECT invoice_id, user_id, username, plan FROM invoices WHERE status = 'pending'"
             )
-            rows = cursor
-            return [{"invoice_id": r[0], "user_id": r[1], "username": r[2], "plan": r[3]} for r in rows]
+            return [{"invoice_id": r["invoice_id"], "user_id": r["user_id"], "username": r["username"], "plan": r["plan"]} for r in rows]
         except Exception as e:
-            pass  # Suppress asyncpg noise
+            logger.error(f"Ошибка получения инвойсов: {e}")
             return []
-    
+
     async def mark_invoice_paid(self, invoice_id):
+        """Отмечает инвойс как оплаченный"""
         try:
             await self.conn.execute(
-                "UPDATE invoices SET status = 'paid' WHERE invoice_id = ?", (invoice_id,)
+                "UPDATE invoices SET status = 'paid' WHERE invoice_id = $1",
+                invoice_id
             )
-            pass  # asyncpg uses autocommit
         except Exception as e:
-            logger.error(f"Ошибка обновления инвойса: {e}")
-    
+            logger.error(f"Ошибка отметки оплаты: {e}")
+
     # === VIP ПОДПИСКИ ===
-    
+
     async def save_subscription(self, user_id, username, plan, invoice_id, expires_at):
+        """Сохраняет подписку"""
         try:
             await self.conn.execute("""
-                INSERT OR REPLACE INTO subscriptions 
-                (user_id, username, plan, invoice_id, status, expires_at)
-                VALUES (?, ?, ?, ?, 'active', ?)
-            """, (user_id, username, plan, invoice_id, expires_at))
-            pass  # asyncpg uses autocommit
+                INSERT INTO subscriptions (user_id, username, plan, invoice_id, status, expires_at)
+                VALUES ($1, $2, $3, $4, 'active', $5)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    plan = EXCLUDED.plan,
+                    invoice_id = EXCLUDED.invoice_id,
+                    status = 'active',
+                    expires_at = EXCLUDED.expires_at
+            """, user_id, username, plan, invoice_id, expires_at)
         except Exception as e:
             logger.error(f"Ошибка сохранения подписки: {e}")
-    
+
     async def get_expired_subscriptions(self):
+        """Получает список истёкших подписок"""
         try:
-            now = TIMESTAMP.now().isoformat()
-            cursor = await self.conn.execute(
-                "SELECT user_id, username FROM subscriptions WHERE status = 'active' AND expires_at < ?", (now,)
+            now = datetime.now(timezone.utc)
+            rows = await self.conn.fetch(
+                "SELECT user_id, username FROM subscriptions WHERE status = 'active' AND expires_at < $1",
+                now
             )
-            rows = cursor
-            return [{"user_id": r[0], "username": r[1]} for r in rows]
+            return [{"user_id": r["user_id"], "username": r["username"]} for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения истёкших подписок: {e}")
             return []
-    
+
     async def deactivate_subscription(self, user_id):
+        """Деактивирует подписку"""
         try:
             await self.conn.execute(
-                "UPDATE subscriptions SET status = 'expired' WHERE user_id = ?", (user_id,)
+                "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1",
+                user_id
             )
-            pass  # asyncpg uses autocommit
         except Exception as e:
             logger.error(f"Ошибка деактивации подписки: {e}")
-    
+
     # === ЛЮБИМЫЕ КОМАНДЫ ===
-    
+
     async def add_favorite_team(self, user_id: int, team_name: str) -> bool:
         try:
-            await self.conn.execute(
-                "INSERT OR IGNORE INTO user_favorites (user_id, team_name) VALUES (?, ?)",
-                (user_id, team_name)
-            )
-            pass  # asyncpg uses autocommit
+            await self.conn.execute("""
+                INSERT INTO user_favorites (user_id, team_name)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id, team_name) DO NOTHING
+            """, user_id, team_name)
             return True
         except Exception as e:
             logger.error(f"Ошибка добавления избранного: {e}")
             return False
-    
+
     async def remove_favorite_team(self, user_id: int, team_name: str) -> bool:
         try:
             await self.conn.execute(
-                "DELETE FROM user_favorites WHERE user_id = ? AND team_name = ?",
-                (user_id, team_name)
+                "DELETE FROM user_favorites WHERE user_id = $1 AND team_name = $2",
+                user_id, team_name
             )
-            pass  # asyncpg uses autocommit
             return True
         except Exception as e:
             logger.error(f"Ошибка удаления избранного: {e}")
             return False
-    
+
     async def get_user_favorites(self, user_id: int) -> list:
         try:
-            cursor = await self.conn.execute(
-                "SELECT team_name FROM user_favorites WHERE user_id = ?", (user_id,)
+            rows = await self.conn.fetch(
+                "SELECT team_name FROM user_favorites WHERE user_id = $1",
+                user_id
             )
-            rows = cursor
-            return [row[0] for row in rows]
+            return [r["team_name"] for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения избранного: {e}")
             return []
-    
+
     async def get_team_followers(self, team_name: str) -> list:
         try:
-            cursor = await self.conn.execute(
-                "SELECT user_id FROM user_favorites WHERE team_name = ?", (team_name,)
+            rows = await self.conn.fetch(
+                "SELECT user_id FROM user_favorites WHERE team_name = $1",
+                team_name
             )
-            rows = cursor
-            return [row[0] for row in rows]
+            return [r["user_id"] for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения подписчиков: {e}")
             return []
-    
+
     # === АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ ===
-    
+
     async def get_user_follows(self, user_id: int) -> list:
         return await self.get_user_favorites(user_id)
-    
+
     async def follow_team(self, user_id: int, username: str, team_name: str) -> bool:
         return await self.add_favorite_team(user_id, team_name)
-    
+
     async def unfollow_team(self, user_id: int, team_name: str) -> bool:
         return await self.remove_favorite_team(user_id, team_name)
-    
-    # === ЗАКРЫТИЕ ===
-    
-    async def close(self):
-        if self.conn:
-            await self.conn.close()
 
     # === РЕФЕРАЛЬНАЯ ПРОГРАММА ===
-    
+
     async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
         """Добавить реферала"""
         try:
@@ -450,69 +387,41 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка добавления реферала: {e}")
             return False
-        try:
-            await self.conn.execute("""
-                INSERT INTO referrals (referrer_id, user_id, username, created_at)
-                VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id) DO NOTHING
-            """, referrer_id, user_id, username)
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка добавления реферала: {e}")
-            return False
 
-    
     async def get_referral_by_user(self, user_id: int):
         """Получить реферала по user_id"""
         try:
-            cursor = await self.conn.execute(
-                "SELECT * FROM referrals WHERE user_id = ?", (user_id,)
+            row = await self.conn.fetchrow(
+                "SELECT * FROM referrals WHERE user_id = $1",
+                user_id
             )
-            return await cursor.fetchone()
+            return row
         except Exception as e:
             logger.error(f"Ошибка получения реферала: {e}")
             return None
-    
+
     async def get_user_referrals(self, user_id: int) -> list:
         """Получить всех рефералов пользователя"""
         try:
-            cursor = await self.conn.execute(
-                "SELECT username, created_at FROM referrals WHERE referrer_id = ? ORDER BY created_at DESC",
-                (user_id,)
+            rows = await self.conn.fetch(
+                "SELECT username, created_at FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC",
+                user_id
             )
-            rows = cursor
-            return [{"username": row[0], "created_at": row[1]} for row in rows]
+            return [{"username": r["username"], "created_at": r["created_at"]} for r in rows]
         except Exception as e:
             logger.error(f"Ошибка получения рефералов: {e}")
             return []
-    
+
+    # === СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ ===
 
     async def get_user_stats(self, user_id: int):
         """Получает статистику конкретного пользователя"""
         try:
-            teams = []
-            follows = 0
-            # Пытаемся получить любимые команды из возможных таблиц
-            for table in ["favorite_teams", "user_teams", "followed_teams"]:
-                for col in ["team_name", "team", "name"]:
-                    try:
-                        cursor = await self.conn.execute(
-                            f"SELECT {col} FROM {table} WHERE user_id = ?", (user_id,)
-                        )
-                        rows = cursor
-                        if rows:
-                            teams = [row[0] for row in rows]
-                            follows = len(teams)
-                            break
-                    except Exception:
-                        continue
-                if teams:
-                    break
-                    
+            teams = await self.get_user_favorites(user_id)
             return {
                 "views": 0,
                 "votes": 0,
-                "follows": follows,
+                "follows": len(teams),
                 "teams": teams
             }
         except Exception as e:
@@ -522,11 +431,17 @@ class Database:
     async def get_referral_stats(self, user_id: int) -> dict:
         """Получить статистику рефералов"""
         try:
-            cursor = await self.conn.execute(
-                "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (user_id,)
+            row = await self.conn.fetchrow(
+                "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1",
+                user_id
             )
-            total = (await cursor.fetchone())[0]
-            return {"total": total}
+            return {"total": row[0] or 0}
         except Exception as e:
             logger.error(f"Ошибка получения статистики рефералов: {e}")
             return {"total": 0}
+
+    # === ЗАКРЫТИЕ ===
+
+    async def close(self):
+        if self.conn:
+            await self.conn.close()
