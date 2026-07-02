@@ -1,7 +1,8 @@
 """
-Публикатор прогнозов в Telegram каналы (с защитой от дублей и фильтром видов спорта)
+Публикатор прогнозов в Telegram каналы (с защитой от дублей, фильтром видов спорта и rate limiting)
 """
 import logging
+import asyncio
 from datetime import datetime
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -37,16 +38,52 @@ def format_datetime_ru(date_str: str) -> str:
         return date_str[:16].replace("T", " ") if date_str else "Дата не указана"
 
 
+class RateLimiter:
+    """
+    Rate limiter для Telegram API.
+    Telegram ограничивает: ~30 сообщений/сек в одном чате, ~20/сек глобально.
+    """
+    def __init__(self, max_requests: int = 20, period: float = 1.0):
+        self.max_requests = max_requests      # Макс запросов за период
+        self.period = period                  # Период в секундах
+        self.requests = []                    # Времена запросов
+        self.lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Ждёт, пока можно сделать запрос"""
+        async with self.lock:
+            now = asyncio.get_event_loop().time()
+            
+            # Удаляем старые запросы (вне периода)
+            self.requests = [t for t in self.requests if now - t < self.period]
+            
+            # Если лимит превышен — ждём
+            if len(self.requests) >= self.max_requests:
+                sleep_time = self.period - (now - self.requests[0])
+                if sleep_time > 0:
+                    logger.debug(f"⏳ Rate limit: ждём {sleep_time:.2f} сек")
+                    await asyncio.sleep(sleep_time)
+                    # Пересчитываем после ожидания
+                    now = asyncio.get_event_loop().time()
+                    self.requests = [t for t in self.requests if now - t < self.period]
+            
+            # Добавляем текущий запрос
+            self.requests.append(now)
+
+
 class TelegramPublisher:
-    # 🛡️ Кэш для защиты от дублей (чтобы один и тот же матч не отправился дважды)
+    # 🛡️ Кэш для защиты от дублей
     _recently_published = set()
+    
+    # 🛡️ Rate limiter (20 запросов в секунду — запас до лимита Telegram)
+    _rate_limiter = RateLimiter(max_requests=20, period=1.0)
 
     def __init__(self):
         self.channel_id = getattr(settings, 'CHANNEL_ID', None)
         self.vip_channel_id = getattr(settings, 'VIP_CHANNEL_ID', None)
         self.bot = None
 
-        # ❗ ИСПРАВЛЕНО: получаем строковое значение из SecretStr
+        # Получаем токен из SecretStr
         token_obj = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
         token = token_obj.get_secret_value() if token_obj else ""
 
@@ -69,7 +106,7 @@ class TelegramPublisher:
         match = prediction.get("match", {})
         sport = match.get("sport", "⚽ Футбол")
 
-        # 🛑 ФИЛЬТР 1: Игнорируем баскетбол, хоккей и т.д. (модель обучена только на футболе!)
+        # 🛑 ФИЛЬТР 1: Игнорируем не-футбол
         if any(s in sport.lower() for s in ["баскет", "basket", "хоккей", "hockey", "теннис", "tennis"]):
             logger.info(f"⏭️ Пропуск не-футбольного матча: {sport}")
             return
@@ -82,18 +119,17 @@ class TelegramPublisher:
         conf = prediction.get("confidence", 0.5)
         odds = prediction.get("odds_est", 2.0)
 
-        # 🛑 ФИЛЬТР 2: Защита от дублей (проверяем по связке Команды + Дата)
+        # 🛑 ФИЛЬТР 2: Защита от дублей
         match_key = f"{home}_{away}_{date_ru}"
         if match_key in self._recently_published:
             logger.warning(f"⚠️ Пропуск дубликата: {home} vs {away}")
             return
         self._recently_published.add(match_key)
 
-        # Очищаем кэш, если он слишком разросся
         if len(self._recently_published) > 200:
             self._recently_published.clear()
 
-        # 🛑 ФИЛЬТР 3: Если модель выдала "Ничья" (X/D), а это не футбол - пропускаем
+        # 🛑 ФИЛЬТР 3: Ничья только для футбола
         if pred in ["X", "D", "Ничья"] and not any(s in sport.lower() for s in ["футбол", "football", "soccer"]):
             logger.warning(f"⚠️ Пропуск ничьей для {sport}: {home} vs {away}")
             return
@@ -114,6 +150,9 @@ class TelegramPublisher:
             return
 
         try:
+            # 🛡️ Ждём rate limit ПЕРЕД отправкой
+            await self._rate_limiter.acquire()
+            
             await self.bot.send_message(
                 chat_id=target_channel,
                 text=text,
