@@ -12,7 +12,7 @@ class Database:
         # db_path больше не используется, т.к. работаем через PostgreSQL
         self.conn: Optional[asyncpg.Connection] = None
 
-        async def init(self):
+    async def init(self):
         """Инициализация подключения к PostgreSQL"""
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
@@ -27,7 +27,7 @@ class Database:
         # Мигрируем колонки (для обратной совместимости)
         await self._migrate_columns()
 
-        async def _migrate_columns(self):
+    async def _migrate_columns(self):
         """Добавляет недостающие колонки в существующие таблицы (для обратной совместимости)"""
         try:
             # Проверяем, есть ли колонка match_date в predictions
