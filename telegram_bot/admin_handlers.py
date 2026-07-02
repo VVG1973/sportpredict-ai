@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery,
@@ -135,8 +136,8 @@ async def btn_publish(message: Message):
     status_msg = await message.answer("🚀 <b>Запускаю генерацию прогнозов...</b> Это может занять до 1 минуты.", parse_mode="HTML", reply_markup=menu)
     
     try:
-        # Запускаем пайплайн
-        result = await run_pipeline()
+        # Запускаем пайплайн с жестким таймаутом в 60 секунд
+        result = await asyncio.wait_for(run_pipeline(), timeout=60.0)
         
         # Анализируем результат
         if isinstance(result, int) and result > 0:
@@ -400,6 +401,11 @@ async def cmd_stats(message: Message):
 
 @admin_router.message(Command("publish"))
 async def cmd_publish(message: Message):
+        except asyncio.TimeoutError:
+        await status_msg.edit_text("⏳ <b>Таймаут!</b>\n\nСервер API-Football не отвечает (зависло соединение). Попробуйте запустить публикацию позже.", parse_mode="HTML")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
     """Команда /publish с диагностикой"""
     print(f"🔵 [CMD] /publish от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
     if message.from_user.id != settings.ADMIN_ID:
