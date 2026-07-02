@@ -192,6 +192,15 @@ class Database:
         """)
         
         print("✅ Таблицы PostgreSQL созданы/проверены")
+        # Миграция: добавляем fixture_id если его нет
+        try:
+            await self.conn.execute("""
+                ALTER TABLE predictions 
+                ADD COLUMN IF NOT EXISTS fixture_id TEXT
+            """)
+        except Exception:
+            pass
+
 
     async def save_prediction(self, fixture_id, home, away, date, pred, conf, odds):
         try:
