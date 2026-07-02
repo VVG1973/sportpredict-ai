@@ -1,6 +1,6 @@
 {
-  "accuracy": 0.6083455344070278,
-  "logloss": 0.8822691026188542,
+  "accuracy": 0.6109077598828697,
+  "logloss": 0.8559919650694128,
   "feature_cols": [
     "odds_home",
     "odds_draw",
@@ -31,5 +31,5 @@
   "n_features": 25,
   "n_train": 12745,
   "n_test": 2732,
-  "training_date": "2026-07-02T17:37:09.148609"
+  "training_date": "2026-07-02T17:54:40.852823"
 }

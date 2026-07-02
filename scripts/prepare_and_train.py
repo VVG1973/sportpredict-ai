@@ -203,23 +203,24 @@ def train_model(df: pd.DataFrame):
     logger.info(f"📊 Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
     
     # --- Модели ---
+    # Стало (компактная модель)
     xgb = XGBClassifier(
-        n_estimators=300,
-        max_depth=6,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        eval_metric='mlogloss'
+     n_estimators=100,      # 300 → 100
+     max_depth=5,           # 6 → 5
+     learning_rate=0.1,   # 0.05 → 0.1
+     subsample=0.8,
+     colsample_bytree=0.8,
+     random_state=42,
+     eval_metric='mlogloss'
     )
-    
+
     rf = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=12,
-        min_samples_split=10,
-        random_state=42,
-        class_weight='balanced',
-        n_jobs=-1
+     n_estimators=50,       # 200 → 50
+     max_depth=8,           # 12 → 8
+     min_samples_split=10,
+     random_state=42,
+     class_weight='balanced',
+     n_jobs=-1
     )
     
     lr = LogisticRegression(
