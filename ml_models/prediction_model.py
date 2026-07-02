@@ -33,11 +33,11 @@ class PredictionModel:
     def _train_on_railway(self):
         """Обучает модель на Railway если данных достаточно"""
         possible_paths = [
-            "data/historical/football_data_matches.csv",
-            "data/football_data_matches.csv",
-            "/app/data/historical/football_data_matches.csv",
-            "/app/data/football_data_matches.csv"
-        ]
+            "/app/data/historical/football_data_matches.csv",  # Railway Docker
+    "/app/data/historical/football_data_matches.csv",  # Railway
+    "data/historical/football_data_matches.csv",       # Локально
+    "data/football_data_matches.csv",
+]
         
         logger.info(f"🔍 Текущая директория: {os.getcwd()}")
         if os.path.exists("data"):
