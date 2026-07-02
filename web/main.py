@@ -80,10 +80,10 @@ async def get_all_predictions(page: int = 1, per_page: int = 50) -> tuple:
         
         offset = (page - 1) * per_page
         rows = await db.conn.fetch("""
-            SELECT fixture_id, home_team, away_team, date, 
+            SELECT fixture_id, home_team, away_team, match_date, 
                    prediction, confidence, odds, result
             FROM predictions
-            ORDER BY date DESC
+            ORDER BY match_date DESC
             LIMIT $1 OFFSET $2
         """, per_page, offset)
         await db.close()
@@ -98,7 +98,7 @@ async def get_all_predictions(page: int = 1, per_page: int = 50) -> tuple:
                 "confidence": round((row["confidence"] or 0.75) * 100, 1),
                 "odds": row["odds"] or 2.0,
                 "result": row["result"],
-                "date": str(row["date"])[:16].replace("T", " ") if row["date"] else "—"
+                "date": str(row["match_date"])[:16].replace("T", " ") if row["date"] else "—"
             }
             predictions.append(pred)
         
