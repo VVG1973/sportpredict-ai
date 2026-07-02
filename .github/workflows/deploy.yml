@@ -1,17 +1,32 @@
-name: Deploy SportPredict AI
+name: Tests
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -24,5 +39,10 @@ jobs:
         pip install -r requirements.txt
     
     - name: Run tests
+      env:
+        DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+        TELEGRAM_BOT_TOKEN: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        CRYPTO_BOT_TOKEN: "test_token"
+        CRYPTO_PAY_API_KEY: "test_key"
       run: |
-        echo "Tests passed!"
+        pytest tests/ -v
