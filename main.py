@@ -103,7 +103,11 @@ async def run_pipeline():
             home_team = m["teams"]["home"]["name"]
             away_team = m["teams"]["away"]["name"]
             match_date = pd.to_datetime(m["fixture"]["date"], errors="coerce")
-
+            
+            # 🛑 ЖЕСТКИЙ ФИЛЬТР: Отбрасываем матчи, которые уже прошли или старше 2 дней
+            now = pd.Timestamp.now(tz="UTC")
+            if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
+                continue
             # Используем ML-модель для предсказания
             ml_result = ml_model.predict(
                 home_team=home_team,
@@ -120,13 +124,15 @@ async def run_pipeline():
             else:
                 predicted_outcome = m.get("outcome", "П1")
 
-            match_data = {
+                match_data = {
                 "home_team": home_team,
                 "away_team": away_team,
                 "date": m["fixture"]["date"],
                 "fixture_id": m["fixture"]["id"],
                 "sport": m.get("sport", "⚽ Футбол"),
                 "league": m.get("league", ""),
+                # 🛡️ СТРАХОВКА КНОПКИ: Если парсер не дал ссылку, даем поиск по командам
+                "odds_url": m.get("odds_url") or f"https://www.google.com/search?q={home_team}+{away_team}+betting+odds"
             }
 
             pred = {
