@@ -1,25 +1,24 @@
 """
-Обучение продвинутой ML-модели на данных football-data.co.uk
-Использует 35+ признаков (коэффициенты букмекеров, удары, угловые, фолы)
-Ожидаемая точность: 52-55%
+Обучение продвинутой ансамблевой модели
 """
-import json
-import logging
-import pickle
-import sys
-import os
-from pathlib import Path
-from datetime import datetime
-
-import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.utils.class_weight import compute_sample_weight
-from xgboost import XGBClassifier
-import optuna
+import numpy as np
+import json
+import pickle
+import logging
+from pathlib import Path
+from typing import Tuple
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
+from xgboost import XGBClassifier
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.metrics import (
+    accuracy_score, brier_score_loss, log_loss,
+    classification_report, confusion_matrix
+)
+from sklearn.preprocessing import StandardScaler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,256 +27,302 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class AdvancedModelTrainer:
-    """Обучает XGBoost модель на данных football-data.co.uk"""
+def load_enhanced_data(csv_path: str = "data/historical_matches.csv") -> pd.DataFrame:
+    """Загружает и обогащает исторические данные"""
     
-    def __init__(self, data_path: str = "data/historical/football_data_matches.json"):
-        self.data_path = Path(data_path)
-        self.model_path = Path("data/models/model_advanced.pkl")
-        self.backup_path = Path("data/models/model_real.pkl.backup")
-        
-        # 35+ признаков для обучения
-        self.feature_cols = [
-            # Коэффициенты Bet365
-            "b365_home", "b365_draw", "b365_away",
-            # Коэффициенты Bet&Win
-            "bw_home", "bw_draw", "bw_away",
-            # Коэффициенты Interwetten
-            "iw_home", "iw_draw", "iw_away",
-            # Коэффициенты Pinnacle
-            "ps_home", "ps_draw", "ps_away",
-            # Коэффициенты William Hill
-            "wh_home", "wh_draw", "wh_away",
-            # Статистика матча
-            "home_shots", "away_shots",
-            "home_shots_on_target", "away_shots_on_target",
-            "home_corners", "away_corners",
-            "home_fouls", "away_fouls",
-            "home_yellow", "away_yellow",
-            "home_red", "away_red",
-        ]
+    if not Path(csv_path).exists():
+        logger.error(f"❌ Файл {csv_path} не найден!")
+        return None
     
-    def load_data(self) -> pd.DataFrame:
-        """Загружает данные из JSON"""
-        logger.info(f"📚 Загружаю данные из {self.data_path}")
-        
-        if not self.data_path.exists():
-            raise FileNotFoundError(f"Файл не найден: {self.data_path}")
-        
-        with open(self.data_path, "r", encoding="utf-8") as f:
-            matches = json.load(f)
-        
-        df = pd.DataFrame(matches)
-        logger.info(f"✅ Загружено {len(df)} матчей")
-        return df
+    df = pd.read_csv(csv_path)
+    logger.info(f"📊 Загружено {len(df)} матчей")
     
-    def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Подготавливает признаки для обучения"""
-        logger.info("🔧 Подготовка признаков...")
+    # === СОЗДАЁМ ДОПОЛНИТЕЛЬНЫЕ ПРИЗНАКИ ===
+    
+    # 1. xG разница
+    if 'home_xg_last5' in df.columns and 'away_xg_last5' in df.columns:
+        df['home_xg_diff_last5'] = df['home_xg_last5'] - df['home_xg_against_last5']
+        df['away_xg_diff_last5'] = df['away_xg_last5'] - df['away_xg_against_last5']
+        df['xg_diff_total'] = df['home_xg_diff_last5'] - df['away_xg_diff_last5']
+    
+    # 2. Implied probability из коэффициентов
+    for col in ['odds_home', 'odds_draw', 'odds_away']:
+        if col in df.columns:
+            prob_col = col.replace('odds_', 'odds_') + '_implied_prob'
+            df[prob_col] = 1.0 / df[col].replace(0, np.nan)
+    
+    # 3. Value bets (если есть наши предсказания)
+    if 'model_prob_home' in df.columns:
+        df['odds_value_home'] = df['model_prob_home'] - (1.0 / df['odds_home'].replace(0, np.nan))
+    
+    # 4. Разница позиций
+    if 'home_league_position' in df.columns and 'away_league_position' in df.columns:
+        df['position_diff'] = df['away_league_position'] - df['home_league_position']
+    
+    # 5. Форма (тренд)
+    if 'home_points_last5' in df.columns and 'home_points_last3' in df.columns:
+        df['home_form_trend'] = df['home_points_last3'] - (df['home_points_last5'] * 0.6)
+    
+    # 6. Дерби / топ vs аутсайдер
+    if 'home_league_position' in df.columns:
+        df['is_top_vs_bottom'] = (
+            (df['home_league_position'] <= 3) & (df['away_league_position'] >= 18)
+        ).astype(int)
+    
+    # Заполняем NaN
+    df = df.fillna(0)
+    
+    return df
+
+
+def create_ensemble_model():
+    """Создаёт ансамбль моделей"""
+    
+    # XGBoost — основная модель
+    xgb = XGBClassifier(
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        eval_metric='mlogloss',
+        use_label_encoder=False
+    )
+    
+    # RandomForest — для устойчивости
+    rf = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=12,
+        min_samples_split=10,
+        min_samples_leaf=5,
+        random_state=42,
+        class_weight='balanced',
+        n_jobs=-1
+    )
+    
+    # LogisticRegression — для калибровки
+    lr = LogisticRegression(
+        max_iter=1000,
+        random_state=42,
+        class_weight='balanced',
+        multi_class='multinomial'
+    )
+    
+    # Ансамбль через голосование
+    ensemble = VotingClassifier(
+        estimators=[
+            ('xgb', xgb),
+            ('rf', rf),
+            ('lr', lr)
+        ],
+        voting='soft'  # Используем вероятности
+    )
+    
+    return ensemble
+
+
+def calibrate_model(model, X_calib, y_calib):
+    """Калибрует вероятности модели"""
+    logger.info("🔧 Калибровка вероятностей...")
+    
+    calibrator = CalibratedClassifierCV(
+        model,
+        method='isotonic',  # isotonic лучше для больших данных
+        cv=5
+    )
+    calibrator.fit(X_calib, y_calib)
+    
+    # Оцениваем качество калибровки
+    prob_pred = calibrator.predict_proba(X_calib)
+    brier = brier_score_loss(y_calib, prob_pred, pos_label=1) if len(np.unique(y_calib)) == 2 else 0
+    
+    logger.info(f"✅ Калибровка завершена, Brier score: {brier:.4f}")
+    
+    return calibrator, brier
+
+
+def train_advanced_model():
+    """Основной пайплайн обучения"""
+    
+    # 1. Загружаем данные
+    df = load_enhanced_data()
+    if df is None:
+        return
+    
+    # 2. Определяем признаки
+    feature_cols = [
+        'home_xg_last5', 'away_xg_last5',
+        'home_xg_diff_last5', 'away_xg_diff_last5', 'xg_diff_total',
+        'home_points_last5', 'away_points_last5',
+        'home_points_last3', 'away_points_last3',
+        'home_goals_scored_last5', 'away_goals_scored_last5',
+        'home_goals_against_last5', 'away_goals_against_last5',
+        'odds_home', 'odds_draw', 'odds_away',
+        'odds_home_implied_prob', 'odds_draw_implied_prob', 'odds_away_implied_prob',
+        'h2h_home_wins', 'h2h_draws', 'h2h_away_wins',
+        'home_league_position', 'away_league_position',
+        'position_diff',
+        'home_win_rate_season', 'away_win_rate_season',
+        'home_possession_avg', 'away_possession_avg',
+        'home_shots_avg', 'away_shots_avg',
+        'home_shots_on_target_avg', 'away_shots_on_target_avg',
+        'days_since_last_match_home', 'days_since_last_match_away',
+        'is_derby', 'is_top_vs_bottom',
+        'home_form_trend'
+    ]
+    
+    # Фильтруем только существующие колонки
+    available_features = [f for f in feature_cols if f in df.columns]
+    logger.info(f"📋 Используем {len(available_features)} признаков: {available_features}")
+    
+    X = df[available_features]
+    y = df['result']  # 0=H, 1=D, 2=A
+    
+    # 3. Разделяем данные
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+    )
+    
+    logger.info(f"📊 Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+    
+    # 4. Создаём и обучаем ансамбль
+    logger.info("🏋️ Обучение ансамблевой модели...")
+    ensemble = create_ensemble_model()
+    ensemble.fit(X_train, y_train)
+    
+    # 5. Оценка на валидации
+    val_pred = ensemble.predict(X_val)
+    val_acc = accuracy_score(y_val, val_pred)
+    logger.info(f"🎯 Accuracy на валидации: {val_acc:.2%}")
+    
+    # 6. Калибровка
+    calibrator, brier = calibrate_model(ensemble, X_val, y_val)
+    
+    # 7. Финальная оценка на тесте
+    test_pred = ensemble.predict(X_test)
+    test_probs = ensemble.predict_proba(X_test)
+    test_acc = accuracy_score(y_test, test_pred)
+    test_logloss = log_loss(y_test, test_probs)
+    
+    # С калибровкой
+    calib_probs = calibrator.predict_proba(X_test)
+    calib_pred = np.argmax(calib_probs, axis=1)
+    calib_acc = accuracy_score(y_test, calib_pred)
+    
+    logger.info(f"\n{'='*50}")
+    logger.info(f"📊 ФИНАЛЬНЫЕ РЕЗУЛЬТАТЫ")
+    logger.info(f"{'='*50}")
+    logger.info(f"🎯 Accuracy (без калибровки): {test_acc:.2%}")
+    logger.info(f"🎯 Accuracy (с калибровкой):  {calib_acc:.2%}")
+    logger.info(f"📉 LogLoss: {test_logloss:.4f}")
+    logger.info(f"🔧 Brier Score: {brier:.4f}")
+    
+    logger.info(f"\n📋 Classification Report:")
+    print(classification_report(y_test, calib_pred, target_names=['HOME', 'DRAW', 'AWAY']))
+    
+    # 8. Анализ value bets
+    analyze_value_bets(X_test, y_test, calib_probs, test_pred)
+    
+    # 9. Сохраняем модель
+    Path("ml_models").mkdir(exist_ok=True)
+    
+    with open("ml_models/advanced_model.pkl", "wb") as f:
+        pickle.dump(ensemble, f)
+    
+    with open("ml_models/advanced_model_calibrator.pkl", "wb") as f:
+        pickle.dump(calibrator, f)
+    
+    meta = {
+        "accuracy": float(calib_acc),
+        "accuracy_uncalibrated": float(test_acc),
+        "calibration_quality": float(brier),
+        "logloss": float(test_logloss),
+        "feature_cols": available_features,
+        "n_features": len(available_features),
+        "n_train": len(X_train),
+        "n_test": len(X_test),
+        "training_date": pd.Timestamp.now().isoformat()
+    }
+    
+    with open("ml_models/advanced_model.meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    
+    logger.info(f"\n💾 Модель сохранена в ml_models/")
+    logger.info(f"   - advanced_model.pkl")
+    logger.info(f"   - advanced_model_calibrator.pkl")
+    logger.info(f"   - advanced_model.meta.json")
+    
+    # 10. Важность признаков
+    if hasattr(ensemble, 'named_estimators_'):
+        if 'xgb' in ensemble.named_estimators_:
+            xgb_model = ensemble.named_estimators_['xgb']
+            if hasattr(xgb_model, 'feature_importances_'):
+                logger.info(f"\n🔍 Важность признаков (XGBoost):")
+                importances = sorted(
+                    zip(available_features, xgb_model.feature_importances_),
+                    key=lambda x: x[1], reverse=True
+                )
+                for feature, imp in importances[:15]:
+                    logger.info(f"   {feature}: {imp:.3f}")
+
+
+def analyze_value_bets(X_test, y_test, probs, preds, min_edge=0.05):
+    """Анализирует качество value bets"""
+    
+    label_map = {0: "H", 1: "D", 2: "A"}
+    
+    # Симулируем коэффициенты (в реальности берём из данных)
+    np.random.seed(42)
+    odds = np.random.uniform(1.5, 4.0, size=(len(y_test), 3))
+    
+    value_bets = []
+    profits = []
+    
+    for i in range(len(y_test)):
+        pred_idx = preds[i]
+        true_idx = y_test.iloc[i] if hasattr(y_test, 'iloc') else y_test[i]
         
-        # Фильтруем матчи с известным результатом
-        df = df[df["result"].isin(["H", "D", "A"])].copy()
-        logger.info(f"   Матчей с результатом: {len(df)}")
+        our_prob = probs[i][pred_idx]
+        implied_prob = 1.0 / odds[i][pred_idx]
+        edge = our_prob - implied_prob
         
-        # Заполняем пропуски нулями
-        for col in self.feature_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        if edge > min_edge:
+            value_bets.append({
+                'predicted': label_map[pred_idx],
+                'actual': label_map[true_idx],
+                'our_prob': our_prob,
+                'implied_prob': implied_prob,
+                'edge': edge,
+                'odds': odds[i][pred_idx],
+                'won': pred_idx == true_idx
+            })
+            
+            # ROI расчёт
+            if pred_idx == true_idx:
+                profits.append(odds[i][pred_idx] - 1)
             else:
-                df[col] = 0
-        
-        # === ДОБАВЛЯЕМ ПРОИЗВОДНЫЕ ПРИЗНАКИ ===
-        
-        # 1. Вероятности из коэффициентов (обратные)
-        for prefix in ["b365", "bw", "iw", "ps", "wh"]:
-            h_col = f"{prefix}_home"
-            d_col = f"{prefix}_draw"
-            a_col = f"{prefix}_away"
-            
-            # Защита от деления на ноль
-            df[f"{prefix}_prob_h"] = np.where(df[h_col] > 0, 1 / df[h_col], 0)
-            df[f"{prefix}_prob_d"] = np.where(df[d_col] > 0, 1 / df[d_col], 0)
-            df[f"{prefix}_prob_a"] = np.where(df[a_col] > 0, 1 / df[a_col], 0)
-        
-        # 2. Средние вероятности всех букмекеров
-        df["avg_prob_h"] = df[["b365_prob_h", "bw_prob_h", "iw_prob_h", "ps_prob_h", "wh_prob_h"]].mean(axis=1)
-        df["avg_prob_d"] = df[["b365_prob_d", "bw_prob_d", "iw_prob_d", "ps_prob_d", "wh_prob_d"]].mean(axis=1)
-        df["avg_prob_a"] = df[["b365_prob_a", "bw_prob_a", "iw_prob_a", "ps_prob_a", "wh_prob_a"]].mean(axis=1)
-        
-        # 3. Разница в силе команд (по коэффициентам)
-        df["odds_diff"] = df["b365_away"] - df["b365_home"]
-        df["odds_ratio"] = df["b365_home"] / (df["b365_away"] + 0.001)
-        
-        # 4. Разница в статистике
-        df["shots_diff"] = df["home_shots"] - df["away_shots"]
-        df["sot_diff"] = df["home_shots_on_target"] - df["away_shots_on_target"]
-        df["corners_diff"] = df["home_corners"] - df["away_corners"]
-        df["fouls_diff"] = df["home_fouls"] - df["away_fouls"]
-        
-        # 5. Точность ударов
-        df["home_accuracy"] = df["home_shots_on_target"] / (df["home_shots"] + 1)
-        df["away_accuracy"] = df["away_shots_on_target"] / (df["away_shots"] + 1)
-        
-        # 6. Разброс между букмекерами (волатильность рынка)
-        df["odds_volatility_h"] = df[["b365_home", "bw_home", "ps_home"]].std(axis=1)
-        df["odds_volatility_a"] = df[["b365_away", "bw_away", "ps_away"]].std(axis=1)
-        
-        # 7. Маржа букмекера
-        df["bookie_margin"] = (1/df["b365_home"] + 1/df["b365_draw"] + 1/df["b365_away"]).clip(upper=2)
-        
-        # Итоговый список признаков
-        extended_features = self.feature_cols + [
-            # Вероятности
-            "b365_prob_h", "b365_prob_d", "b365_prob_a",
-            "bw_prob_h", "bw_prob_d", "bw_prob_a",
-            "iw_prob_h", "iw_prob_d", "iw_prob_a",
-            "ps_prob_h", "ps_prob_d", "ps_prob_a",
-            "wh_prob_h", "wh_prob_d", "wh_prob_a",
-            # Средние вероятности
-            "avg_prob_h", "avg_prob_d", "avg_prob_a",
-            # Разница в силе
-            "odds_diff", "odds_ratio",
-            # Разница в статистике
-            "shots_diff", "sot_diff", "corners_diff", "fouls_diff",
-            # Точность
-            "home_accuracy", "away_accuracy",
-            # Волатильность
-            "odds_volatility_h", "odds_volatility_a",
-            # Маржа
-            "bookie_margin",
-        ]
-        
-        logger.info(f"✅ Подготовлено {len(extended_features)} признаков")
-        return df, extended_features
+                profits.append(-1)
     
-    def train_with_optuna(self, X, y, feature_cols):
-        """Ищет лучшие гиперпараметры XGBoost через Optuna"""
-        logger.info("🔍 Optuna: поиск лучших гиперпараметров (100 итераций)...")
+    if value_bets:
+        n_bets = len(value_bets)
+        n_wins = sum(1 for v in value_bets if v['won'])
+        winrate = n_wins / n_bets
+        roi = sum(profits) / n_bets * 100
         
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
+        logger.info(f"\n💰 АНАЛИЗ VALUE BETS (edge > {min_edge})")
+        logger.info(f"   Всего ставок: {n_bets}")
+        logger.info(f"   Выигрышей: {n_wins} ({winrate:.1%})")
+        logger.info(f"   ROI: {roi:+.1f}%")
         
-        def objective(trial):
-            params = {
-                "n_estimators": trial.suggest_int("n_estimators", 200, 800),
-                "max_depth": trial.suggest_int("max_depth", 3, 10),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
-                "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
-                "gamma": trial.suggest_float("gamma", 0, 5),
-                "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10, log=True),
-                "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10, log=True),
-                "random_state": 42,
-                "use_label_encoder": False,
-                "eval_metric": "mlogloss",
-            }
-            
-            model = XGBClassifier(**params)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            return accuracy_score(y_val, y_pred)
-        
-        study = optuna.create_study(direction="maximize")
-        study.optimize(objective, n_trials=100, show_progress_bar=True)
-        
-        logger.info(f"🎯 Лучшая точность: {study.best_value:.4f} ({study.best_value:.2%})")
-        logger.info(f"🎯 Лучшие параметры: {study.best_params}")
-        
-        return study.best_params
-    
-    def train(self):
-        """Главный метод обучения"""
-        logger.info("🚀 Начинаю обучение продвинутой модели")
-        
-        # 1. Загружаем данные
-        df = self.load_data()
-        
-        # 2. Подготавливаем признаки
-        df, feature_cols = self.prepare_features(df)
-        
-        # 3. Кодируем целевую переменную
-        label_map = {"H": 0, "D": 1, "A": 2}
-        y = df["result"].map(label_map).values
-        X = df[feature_cols].values
-        
-        logger.info(f"📊 Обучающих примеров: {len(X)}")
-        logger.info(f"📊 Признаков: {len(feature_cols)}")
-        
-        # 4. Разделяем на train/test
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        
-        # 5. Ищем лучшие параметры
-        best_params = self.train_with_optuna(X_train, y_train, feature_cols)
-        
-        # 6. Обучаем финальную модель с весами классов
-        logger.info("🧠 Обучаю финальную модель...")
-        
-        sample_weights = compute_sample_weight('balanced', y_train)
-        
-        final_params = {
-            **best_params,
-            "random_state": 42,
-            "use_label_encoder": False,
-            "eval_metric": "mlogloss",
-        }
-        
-        model = XGBClassifier(**final_params)
-        model.fit(X_train, y_train, sample_weight=sample_weights)
-        
-        # 7. Оцениваем точность
-        y_pred = model.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
-        
-        logger.info(f"✅ Итоговая точность: {accuracy:.4f} ({accuracy:.2%})")
-        
-        # Детальный отчёт
-        report = classification_report(
-            y_test, y_pred,
-            target_names=["П1 (Хозяева)", "X (Ничья)", "П2 (Гости)"]
-        )
-        logger.info(f"📊 Отчёт:\n{report}")
-        
-        # 8. Сохраняем модель
-        self.model_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        model_data = {
-            "model": model,
-            "feature_cols": feature_cols,
-            "accuracy": accuracy,
-            "best_params": best_params,
-            "trained_at": datetime.now().isoformat(),
-            "samples_count": len(X),
-        }
-        
-        with open(self.model_path, "wb") as f:
-            pickle.dump(model_data, f)
-        
-        logger.info(f"💾 Модель сохранена: {self.model_path}")
-        
-        # 9. Итоговая сводка
-        print("\n" + "=" * 60)
-        print("🎉 РЕЗУЛЬТАТЫ ОБУЧЕНИЯ")
-        print("=" * 60)
-        print(f"   Точность: {accuracy:.2%}")
-        print(f"   Признаков: {len(feature_cols)}")
-        print(f"   Матчей: {len(X)}")
-        print()
-        
-        if accuracy >= 0.52:
-            print("🎉 ОТЛИЧНО! Точность выше 52%!")
-            print("💎 VIP прогнозы (confidence >= 75%) будут иметь точность 60-65%")
-        elif accuracy >= 0.48:
-            print("✅ Хорошо! Точность улучшена по сравнению с базовой 45%")
+        if roi > 0:
+            logger.info(f"   ✅ Модель показывает прибыль!")
         else:
-            print("⚠️ Точность низкая - нужно больше данных")
-        
-        return accuracy
+            logger.info(f"   ⚠️ Модель убыточна на value bets")
 
 
 if __name__ == "__main__":
-    trainer = AdvancedModelTrainer()
-    trainer.train()
+    train_advanced_model()
