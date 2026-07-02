@@ -21,7 +21,6 @@ class PredictionModel:
         if not self.is_trained:
             logger.warning("⚠️ Модель не загружена, пробуем обучить...")
             self._train_on_railway()
-            
             self.model = AdvancedPredictionModel()
             self.is_trained = self.model.is_loaded
             self.accuracy = self.model.accuracy
@@ -31,9 +30,8 @@ class PredictionModel:
         else:
             logger.warning("⚠️ PredictionModel инициализирован без обученной модели")
 
-        def _train_on_railway(self):
+    def _train_on_railway(self):
         """Обучает модель на Railway если данных достаточно"""
-        # Пробуем разные пути
         possible_paths = [
             "data/historical/football_data_matches.csv",
             "data/football_data_matches.csv",
@@ -42,7 +40,8 @@ class PredictionModel:
         ]
         
         logger.info(f"🔍 Текущая директория: {os.getcwd()}")
-        logger.info(f"🔍 Содержимое текущей директории: {os.listdir('.')}")
+        if os.path.exists("data"):
+            logger.info(f"🔍 Содержимое data/: {os.listdir('data')}")
         
         data_path = None
         for path in possible_paths:
@@ -53,13 +52,26 @@ class PredictionModel:
                 break
         
         if not data_path:
-            logger.error("❌ Данные не найдены")
-            # Покажем всё в data/
-            if os.path.exists("data"):
-                for root, dirs, files in os.walk("data"):
-                    for f in files:
-                        logger.info(f"   Файл: {os.path.join(root, f)}")
+            logger.error("❌ Данные не найдены ни в одном из путей")
             return
+        
+        try:
+            logger.info("🏋️ Запуск обучения модели на Railway...")
+            result = subprocess.run(
+                ["python", "scripts/prepare_and_train.py"],
+                capture_output=True,
+                text=True,
+                timeout=900
+            )
+            
+            if result.returncode == 0:
+                logger.info("✅ Модель успешно обучена на Railway")
+            else:
+                logger.error(f"❌ Ошибка обучения: {result.stderr[:500]}")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обучении: {e}")
+
     def predict(self, match_data: Dict = None, **kwargs) -> Dict:
         if match_data is None:
             match_data = kwargs
