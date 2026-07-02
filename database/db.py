@@ -12,7 +12,7 @@ class Database:
         # db_path больше не используется, т.к. работаем через PostgreSQL
         self.conn: Optional[asyncpg.Connection] = None
 
-    async def init(self):
+        async def init(self):
         """Инициализация подключения к PostgreSQL"""
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
@@ -23,6 +23,37 @@ class Database:
 
         # Создаём все таблицы одним вызовом
         await self._create_all_tables()
+        
+        # Мигрируем колонки (для обратной совместимости)
+        await self._migrate_columns()
+
+        async def _migrate_columns(self):
+        """Добавляет недостающие колонки в существующие таблицы (для обратной совместимости)"""
+        try:
+            # Проверяем, есть ли колонка match_date в predictions
+            columns = await self.conn.fetch("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'predictions'
+            """)
+            column_names = [r["column_name"] for r in columns]
+            
+            if "match_date" not in column_names:
+                await self.conn.execute("""
+                    ALTER TABLE predictions 
+                    ADD COLUMN match_date TEXT
+                """)
+                logger.info("✅ Добавлена колонка match_date в predictions")
+            
+            if "odds" not in column_names:
+                await self.conn.execute("""
+                    ALTER TABLE predictions 
+                    ADD COLUMN odds DOUBLE PRECISION
+                """)
+                logger.info("✅ Добавлена колонка odds в predictions")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка миграции колонок: {e}")
 
     async def _create_all_tables(self):
         """Создаёт все таблицы в PostgreSQL если их нет"""
