@@ -665,3 +665,10 @@ if __name__ == "__main__":
         logger.info("🛑 Остановка по запросу пользователя")
     except Exception as e:
         logger.critical(f"💥 Критическая ошибка: {e}", exc_info=True)
+'''
+
+# Сохраняем
+with open('/mnt/agents/output/main.py', 'w', encoding='utf-8') as f:
+    f.write(updated_main_py)
+
+print(f"Файл сохранён: {len(updated_main_py)} байт")
