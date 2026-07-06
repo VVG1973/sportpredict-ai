@@ -1,0 +1,33 @@
+{
+  "feature_cols": [
+    "B365H",
+    "B365D",
+    "B365A",
+    "BWH",
+    "BWD",
+    "BWA",
+    "WHH",
+    "WHD",
+    "WHA",
+    "HS",
+    "AS",
+    "HST",
+    "AST",
+    "HC",
+    "AC",
+    "HF",
+    "AF",
+    "HY",
+    "AY",
+    "HR",
+    "AR"
+  ],
+  "accuracy": {
+    "outcome": 0.6072,
+    "total": 0.699,
+    "both_scored": 0.6718,
+    "handicap": 0.7418
+  },
+  "n_features": 21,
+  "training_date": "2026-07-06T15:39:19.666865"
+}

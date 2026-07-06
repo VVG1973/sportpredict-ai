@@ -1,6 +1,6 @@
 """
-Advanced Prediction Model
-Ансамблевая модель с калибровкой вероятностей
+Advanced Prediction Model - Multi-Output
+Прогнозирует: исход, тотал, обе забьют, фора
 """
 import logging
 import json
@@ -9,115 +9,47 @@ from pathlib import Path
 from typing import Dict, Tuple, List, Optional
 import numpy as np
 
-from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
-
 logger = logging.getLogger(__name__)
 
 
 class AdvancedPredictionModel:
     """
-    Ансамблевая модель для прогнозирования футбольных матчей.
-    
-    Использует:
-    - XGBoost (основная модель)
-    - RandomForest (для устойчивости)
-    - LogisticRegression (для калибровки вероятностей)
-    - Калибровку через isotonic regression
+    Multi-output модель для прогнозирования футбольных матчей.
+    Загружает ансамбль из 4 моделей: исход, тотал, ОЗ, фора.
     """
-    
-    # Ключевые признаки (расширенный набор)
-    FEATURE_COLS = [
-        # === xG признаки ===
-        'home_xg_last5', 'away_xg_last5',
-        'home_xg_against_last5', 'away_xg_against_last5',
-        'home_xg_diff_last5', 'away_xg_diff_last5',
-        
-        # === Форма ===
-        'home_points_last5', 'away_points_last5',
-        'home_points_last3', 'away_points_last3',
-        'home_goals_scored_last5', 'away_goals_scored_last5',
-        'home_goals_against_last5', 'away_goals_against_last5',
-        
-        # === Коэффициенты букмекеров ===
-        'odds_home', 'odds_draw', 'odds_away',
-        'odds_home_implied_prob', 'odds_draw_implied_prob', 'odds_away_implied_prob',
-        'odds_value_home', 'odds_value_draw', 'odds_value_away',
-        
-        # === H2H ===
-        'h2h_home_wins', 'h2h_draws', 'h2h_away_wins',
-        'h2h_home_goals', 'h2h_away_goals',
-        
-        # === Турнирное положение ===
-        'home_league_position', 'away_league_position',
-        'home_points_total', 'away_points_total',
-        'position_diff',
-        
-        # === Домашнее преимущество ===
-        'home_win_rate_season', 'away_win_rate_season',
-        'home_xg_season_avg', 'away_xg_season_avg',
-        
-        # === Статистика матчей ===
-        'home_possession_avg', 'away_possession_avg',
-        'home_shots_avg', 'away_shots_avg',
-        'home_shots_on_target_avg', 'away_shots_on_target_avg',
-        'home_corners_avg', 'away_corners_avg',
-        
-        # === Контекст ===
-        'days_since_last_match_home', 'days_since_last_match_away',
-        'is_derby', 'is_top_vs_bottom',
-        'home_rest_days', 'away_rest_days',
-        
-        # === Рыночные сигналы ===
-        'odds_movement_home', 'odds_movement_away',
-        'betting_volume_home', 'betting_volume_away',
-    ]
     
     def __init__(self, model_dir: str = "ml_models"):
         self.model_dir = Path(model_dir)
-        self.model = None
-        self.calibrator = None
-        self.feature_cols = self.FEATURE_COLS
-        self.accuracy = 0.0
+        self.models = None
+        self.feature_cols = []
+        self.accuracy = {}
         self.is_loaded = False
-        self.calibration_quality = 0.0
         
         self._load_model()
     
     def _load_model(self):
-        """Загружает обученную модель и калибратор"""
-        model_path = self.model_dir / "advanced_model.pkl"
-        calibrator_path = self.model_dir / "advanced_model_calibrator.pkl"
-        meta_path = self.model_dir / "advanced_model.meta.json"
+        """Загружает multi-output модель"""
+        model_path = self.model_dir / "multi_output_model.pkl"
+        meta_path = self.model_dir / "multi_output_model.meta.json"
         
         if not model_path.exists():
             logger.error(f"❌ Модель не найдена: {model_path}")
             return
         
         try:
-            # Загружаем модель
             with open(model_path, "rb") as f:
-                self.model = pickle.load(f)
+                self.models = pickle.load(f)
             
-            # Загружаем калибратор (если есть)
-            if calibrator_path.exists():
-                with open(calibrator_path, "rb") as f:
-                    self.calibrator = pickle.load(f)
+            self.feature_cols = self.models.get('feature_cols', [])
+            self.accuracy = self.models.get('accuracy', {})
             
-            # Загружаем метаданные
             if meta_path.exists():
                 with open(meta_path, "r", encoding="utf-8") as f:
                     meta = json.load(f)
-                self.accuracy = meta.get("accuracy", 0.0)
-                self.calibration_quality = meta.get("calibration_quality", 0.0)
-                self.feature_cols = meta.get("feature_cols", self.FEATURE_COLS)
+                self.accuracy = meta.get("accuracy", self.accuracy)
             
             self.is_loaded = True
-            logger.info(f"✅ AdvancedModel загружена: точность {self.accuracy:.2%}, калибровка {self.calibration_quality:.3f}")
+            logger.info(f"✅ Multi-Output модель загружена: {self.accuracy}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки модели: {e}")
@@ -129,6 +61,11 @@ class AdvancedPredictionModel:
         
         for col in self.feature_cols:
             value = match_data.get(col, 0)
+            # Пробуем разные варианты названий
+            if value == 0:
+                value = match_data.get(col.lower(), 0)
+            if value == 0:
+                value = match_data.get(col.upper(), 0)
             try:
                 features.append(float(value))
             except (ValueError, TypeError):
@@ -136,98 +73,109 @@ class AdvancedPredictionModel:
         
         return np.array(features).reshape(1, -1)
     
-    def predict(self, match_data: Dict) -> Tuple[str, float, Dict[str, float]]:
+    def predict(self, match_data: Dict) -> Dict:
         """
-        Делает прогноз с калибровкой вероятностей.
+        Делает прогнозы по всем рынкам.
         
         Returns:
-            prediction: "H", "D" или "A"
-            confidence: откалиброванная уверенность (0-1)
-            probabilities: {"H": p, "D": p, "A": p}
+            {
+                "outcome": {"prediction": "H", "confidence": 0.72},
+                "total": {"prediction": "ТБ 2.5", "confidence": 0.68},
+                "both_scored": {"prediction": "Да", "confidence": 0.55},
+                "handicap": {"prediction": "Ф1(-0.5)", "confidence": 0.74},
+            }
         """
-        if not self.is_loaded or self.model is None:
+        if not self.is_loaded or self.models is None:
             logger.warning("⚠️ Модель не загружена")
-            return "H", 0.33, {"H": 0.33, "D": 0.33, "A": 0.33}
+            return self._fallback_prediction()
         
         try:
             features = self._extract_features(match_data)
             
-            # Базовые вероятности от ансамбля
-            if hasattr(self.model, 'predict_proba'):
-                base_probs = self.model.predict_proba(features)[0]
-            else:
-                # Fallback для моделей без predict_proba
-                pred_idx = self.model.predict(features)[0]
-                base_probs = np.zeros(3)
-                base_probs[pred_idx] = 1.0
+            # === ИСХОД (H/D/A) ===
+            outcome_model = self.models['outcome']
+            outcome_probs = outcome_model.predict_proba(features)[0]
+            outcome_idx = np.argmax(outcome_probs)
+            outcome_map = {0: "H", 1: "D", 2: "A"}
+            outcome_conf = float(outcome_probs[outcome_idx])
             
-            # Калибровка вероятностей (если калибратор загружен)
-            if self.calibrator is not None:
-                calibrated_probs = self.calibrator.predict_proba(features)[0]
-                # Взвешенное среднее: 70% калиброванные + 30% базовые
-                # Это предотвращает переусреднение
-                probs = 0.7 * calibrated_probs + 0.3 * base_probs
-            else:
-                probs = base_probs
+            # === ТОТАЛ (ТБ/ТМ 2.5) ===
+            total_model = self.models['total']
+            total_probs = total_model.predict_proba(features)[0]
+            # total_probs[0] = ТМ, total_probs[1] = ТБ
+            total_pred = "ТБ 2.5" if total_probs[1] > total_probs[0] else "ТМ 2.5"
+            total_conf = float(max(total_probs))
             
-            # Нормализация (чтобы сумма = 1)
-            probs = probs / probs.sum()
+            # === ОБЕ ЗАБЬЮТ ===
+            both_model = self.models['both_scored']
+            both_probs = both_model.predict_proba(features)[0]
+            # both_probs[0] = Нет, both_probs[1] = Да
+            both_pred = "Да" if both_probs[1] > both_probs[0] else "Нет"
+            both_conf = float(max(both_probs))
             
-            label_map = {0: "H", 1: "D", 2: "A"}
-            prediction_idx = np.argmax(probs)
-            prediction = label_map[prediction_idx]
-            confidence = float(probs[prediction_idx])
+            # === ФОРА (Ф1/Ф2) ===
+            handicap_model = self.models['handicap']
+            hand_probs = handicap_model.predict_proba(features)[0]
+            # hand_probs[0] = Ф2, hand_probs[1] = Ф1
+            hand_pred = "Ф1(-0.5)" if hand_probs[1] > hand_probs[0] else "Ф2(+0.5)"
+            hand_conf = float(max(hand_probs))
             
-            # Фильтр: если confidence < 0.55, считаем прогноз ненадёжным
-            if confidence < 0.55:
-                logger.info(f"⚠️ Низкая уверенность ({confidence:.2%}), прогноз может быть неточным")
-            
-            prob_dict = {
-                "H": float(probs[0]),
-                "D": float(probs[1]),
-                "A": float(probs[2])
+            return {
+                "outcome": {
+                    "prediction": outcome_map[outcome_idx],
+                    "confidence": outcome_conf,
+                    "probabilities": {
+                        "H": float(outcome_probs[0]),
+                        "D": float(outcome_probs[1]),
+                        "A": float(outcome_probs[2])
+                    }
+                },
+                "total": {
+                    "prediction": total_pred,
+                    "confidence": total_conf
+                },
+                "both_scored": {
+                    "prediction": both_pred,
+                    "confidence": both_conf
+                },
+                "handicap": {
+                    "prediction": hand_pred,
+                    "confidence": hand_conf
+                }
             }
-            
-            return prediction, confidence, prob_dict
             
         except Exception as e:
             logger.error(f"❌ Ошибка прогноза: {e}")
-            return "H", 0.33, {"H": 0.33, "D": 0.33, "A": 0.33}
+            return self._fallback_prediction()
+    
+    def _fallback_prediction(self) -> Dict:
+        """Fallback при ошибке"""
+        return {
+            "outcome": {"prediction": "H", "confidence": 0.33, "probabilities": {"H": 0.33, "D": 0.33, "A": 0.33}},
+            "total": {"prediction": "ТБ 2.5", "confidence": 0.5},
+            "both_scored": {"prediction": "Да", "confidence": 0.5},
+            "handicap": {"prediction": "Ф1(-0.5)", "confidence": 0.5},
+        }
     
     def predict_with_value(self, match_data: Dict, min_odds: float = 1.5) -> Optional[Dict]:
-        """
-        Прогноз с поиском value bet (ставок с перевесом).
+        """Прогноз с value bet анализом"""
+        predictions = self.predict(match_data)
         
-        Value bet = когда наша вероятность > implied probability букмекера
-        """
-        prediction, confidence, probs = self.predict(match_data)
-        
-        # Получаем коэффициенты
-        odds_home = match_data.get('odds_home', 0)
-        odds_draw = match_data.get('odds_draw', 0)
-        odds_away = match_data.get('odds_away', 0)
+        # Анализируем value для исхода
+        outcome = predictions['outcome']
+        odds_home = match_data.get('odds_home', 0) or match_data.get('B365H', 0)
+        odds_draw = match_data.get('odds_draw', 0) or match_data.get('B365D', 0)
+        odds_away = match_data.get('odds_away', 0) or match_data.get('B365A', 0)
         
         odds_map = {"H": odds_home, "D": odds_draw, "A": odds_away}
-        current_odds = odds_map.get(prediction, 0)
+        current_odds = odds_map.get(outcome['prediction'], 0)
         
-        if current_odds <= 0:
-            return None
+        if current_odds > 0:
+            implied_prob = 1.0 / current_odds
+            our_prob = outcome['confidence']
+            value = our_prob - implied_prob
+            
+            outcome['value'] = value
+            outcome['is_value_bet'] = value > 0.05
         
-        # Рассчитываем value
-        implied_prob = 1.0 / current_odds
-        our_prob = probs[prediction]
-        
-        value = our_prob - implied_prob
-        edge = value / implied_prob if implied_prob > 0 else 0
-        
-        return {
-            "prediction": prediction,
-            "confidence": confidence,
-            "odds": current_odds,
-            "our_probability": our_prob,
-            "implied_probability": implied_prob,
-            "value": value,
-            "edge_percent": edge * 100,
-            "is_value_bet": value > 0.05 and confidence > 0.55,  # 5% перевеса и 55% уверенность
-            "recommended_stake": "small" if edge < 0.1 else "medium" if edge < 0.2 else "large"
-        }
+        return predictions

@@ -150,13 +150,53 @@ async def run_pipeline():
                 continue
                 
             # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
-            ml_result = await asyncio.to_thread(
-                ml_model.predict,
-                home_team=home_team,
-                away_team=away_team,
-                match_date=match_date,
-                historical_df=historical_df
-            )
+             # Получаем все прогнозы
+            # Получаем все прогнозы
+ml_result = await asyncio.to_thread(
+    get_ml_model().predict,
+    home_team=home_team,
+    away_team=away_team,
+    match_date=match_date,
+    historical_df=historical_df
+)
+
+# Основной прогноз (исход)
+outcome = ml_result.get('outcome', {})
+prediction = outcome.get('prediction', 'H')
+confidence = outcome.get('confidence', 0.5)
+
+# Дополнительные рынки
+markets = ml_result.get('markets', ml_result)
+total_pred = markets.get('total', {}).get('prediction', '')
+both_scored_pred = markets.get('both_scored', {}).get('prediction', '')
+handicap_pred = markets.get('handicap', {}).get('prediction', '')
+
+# Формируем текст прогноза с дополнительными рынками
+extra_markets = []
+if total_pred:
+    extra_markets.append(f"⚽ Тотал: {total_pred}")
+if both_scored_pred:
+    extra_markets.append(f"🥅 Обе забьют: {both_scored_pred}")
+if handicap_pred:
+    extra_markets.append(f"📊 Фора: {handicap_pred}")
+
+extra_text = "\n".join(extra_markets) if extra_markets else ""
+# Дополнительные рынки
+markets = ml_result.get('markets', ml_result)
+total_pred = markets.get('total', {}).get('prediction', '')
+both_scored_pred = markets.get('both_scored', {}).get('prediction', '')
+handicap_pred = markets.get('handicap', {}).get('prediction', '')
+
+# Формируем текст прогноза с дополнительными рынками
+extra_markets = []
+if total_pred:
+    extra_markets.append(f"⚽ Тотал: {total_pred}")
+if both_scored_pred:
+    extra_markets.append(f"🥅 Обе забьют: {both_scored_pred}")
+if handicap_pred:
+    extra_markets.append(f"📊 Фора: {handicap_pred}")
+
+extra_text = "\n".join(extra_markets) if extra_markets else ""
 
             # Маппинг предсказания в русский формат
             outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
