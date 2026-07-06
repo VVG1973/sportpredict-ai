@@ -29,31 +29,49 @@ class AdvancedPredictionModel:
     
     def _load_model(self):
         """Загружает multi-output модель"""
-        model_path = self.model_dir / "multi_output_model.pkl"
-        meta_path = self.model_dir / "multi_output_model.meta.json"
-        
-        if not model_path.exists():
-            logger.error(f"❌ Модель не найдена: {model_path}")
-            return
-        
+        # Пробуем несколько путей
+        possible_paths = [
+            self.model_dir / "multi_output_model.pkl",           # Обычный путь
+            self.model_dir / "multi_output_model.pkl.gz",        # Сжатый
+            Path("/app/data/ml_models/multi_output_model.pkl"),  # Volume
+        ]
+    
+        model_path = None
+        for path in possible_paths:
+            if path.exists():
+                model_path = path
+                break
+    
+        if model_path is None:
+           logger.error(f"❌ Модель не найдена ни по одному пути")
+           return
+    
+        meta_path = model_path.parent / "multi_output_model.meta.json"
+    
         try:
-            with open(model_path, "rb") as f:
-                self.models = pickle.load(f)
-            
+            # Загружаем модель (с поддержкой .gz)
+            if model_path.suffix == '.gz':
+                import gzip
+                with gzip.open(model_path, "rb") as f:
+                    self.models = pickle.load(f)
+            else:
+                with open(model_path, "rb") as f:
+                    self.models = pickle.load(f)
+        
             self.feature_cols = self.models.get('feature_cols', [])
             self.accuracy = self.models.get('accuracy', {})
-            
+        
             if meta_path.exists():
                 with open(meta_path, "r", encoding="utf-8") as f:
                     meta = json.load(f)
                 self.accuracy = meta.get("accuracy", self.accuracy)
-            
+        
             self.is_loaded = True
             logger.info(f"✅ Multi-Output модель загружена: {self.accuracy}")
-            
+        
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки модели: {e}")
-            self.is_loaded = False
+            self.is_loaded = False    
     
     def _extract_features(self, match_data: Dict) -> np.ndarray:
         """Извлекает признаки из данных матча"""
