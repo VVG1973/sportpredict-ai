@@ -1,8 +1,7 @@
-
-updated_db_py = '''import asyncpg
+import asyncpg
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -10,9 +9,11 @@ logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self, db_path: str = "data/predictions.db"):
+        # db_path больше не используется, т.к. работаем через PostgreSQL
         self.conn: Optional[asyncpg.Connection] = None
 
     async def init(self):
+        """Инициализация подключения к PostgreSQL"""
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
             raise ValueError("DATABASE_URL не установлен в переменных окружения!")
@@ -20,11 +21,16 @@ class Database:
         self.conn = await asyncpg.connect(db_url)
         logger.info("📁 Подключено к PostgreSQL")
 
+        # Создаём все таблицы одним вызовом
         await self._create_all_tables()
+        
+        # Мигрируем колонки (для обратной совместимости)
         await self._migrate_columns()
 
     async def _migrate_columns(self):
+        """Добавляет недостающие колонки в существующие таблицы (для обратной совместимости)"""
         try:
+            # Проверяем, есть ли колонка match_date в predictions
             columns = await self.conn.fetch("""
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -50,6 +56,9 @@ class Database:
             logger.warning(f"⚠️ Ошибка миграции колонок: {e}")
 
     async def _create_all_tables(self):
+        """Создаёт все таблицы в PostgreSQL если их нет"""
+
+        # Таблица пользователей
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -60,6 +69,7 @@ class Database:
             )
         """)
 
+        # Таблица прогнозов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id SERIAL PRIMARY KEY,
@@ -75,6 +85,7 @@ class Database:
             )
         """)
 
+        # Таблица подписок
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id SERIAL PRIMARY KEY,
@@ -88,6 +99,7 @@ class Database:
             )
         """)
 
+        # Таблица экспресс-групп
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS express_groups (
                 id SERIAL PRIMARY KEY,
@@ -99,6 +111,7 @@ class Database:
             )
         """)
 
+        # Таблица инвойсов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
                 id SERIAL PRIMARY KEY,
@@ -112,6 +125,7 @@ class Database:
             )
         """)
 
+        # Таблица любимых команд
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS user_favorites (
                 id SERIAL PRIMARY KEY,
@@ -122,6 +136,7 @@ class Database:
             )
         """)
 
+        # Таблица рефералов
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
@@ -137,6 +152,7 @@ class Database:
     # === ПРОГНОЗЫ ===
 
     async def save_prediction(self, fixture_id, home, away, date, pred, conf, odds):
+        """Сохраняет прогноз. Если fixture_id уже есть — обновляет."""
         try:
             await self.conn.execute("""
                 INSERT INTO predictions (fixture_id, home_team, away_team, match_date, prediction, confidence, odds, result)
@@ -154,6 +170,7 @@ class Database:
             logger.error(f"Ошибка сохранения прогноза: {e}")
 
     async def get_pending_predictions(self):
+        """Возвращает список непроверенных прогнозов"""
         try:
             rows = await self.conn.fetch("""
                 SELECT fixture_id, home_team, away_team, match_date, prediction
@@ -167,6 +184,7 @@ class Database:
             return []
 
     async def update_result(self, fixture_id, result):
+        """Обновляет результат прогноза (win/loss)"""
         try:
             await self.conn.execute(
                 "UPDATE predictions SET result = $1 WHERE fixture_id = $2",
@@ -177,36 +195,28 @@ class Database:
 
     # === СТАТИСТИКА ===
 
-    async def get_stats(self, since: Optional[datetime] = None):
-        """
-        Возвращает статистику прогнозов.
-        Если since указан — считает только с этой даты (для "за вчера"/"за неделю").
-        """
+    async def get_stats(self):
+        """Возвращает общую статистику прогнозов"""
         try:
-            if since:
-                row = await self.conn.fetchrow("""
-                    SELECT
-                        COUNT(*) as total,
-                        COALESCE(SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END), 0) as wins,
-                        COALESCE(SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END), 0) as losses
-                    FROM predictions
-                    WHERE created_at >= $1
-                """, since)
-            else:
-                row = await self.conn.fetchrow("""
-                    SELECT
-                        COUNT(*) as total,
-                        COALESCE(SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END), 0) as wins,
-                        COALESCE(SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END), 0) as losses
-                    FROM predictions
-                """)
+            row = await self.conn.fetchrow("""
+                SELECT
+                    COUNT(*) as total,
+                    COALESCE(SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END), 0) as wins,
+                    COALESCE(SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END), 0) as losses
+                FROM predictions
+            """)
 
-            total = int(row["total"] or 0)
-            wins = int(row["wins"] or 0)
-            losses = int(row["losses"] or 0)
+            total = row["total"] or 0
+            wins = row["wins"] or 0
+            losses = row["losses"] or 0
             pending = total - wins - losses
             checked = wins + losses
             winrate = (wins / checked * 100) if checked > 0 else 0.0
+
+            # Упрощённый расчёт ROI
+            roi = 0.0
+            if checked > 0:
+                roi = (winrate - 50) * 2
 
             return {
                 "total": total,
@@ -214,14 +224,16 @@ class Database:
                 "losses": losses,
                 "pending": pending,
                 "winrate": winrate,
+                "roi": roi
             }
         except Exception as e:
             logger.error(f"Ошибка статистики: {e}")
-            return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0}
+            return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0, "roi": 0.0}
 
     # === ЭКСПРЕССЫ ===
 
     async def save_express_group(self, events, total_odds, price):
+        """Сохраняет группу событий экспресса"""
         try:
             import json
             events_json = json.dumps(events, ensure_ascii=False)
@@ -236,6 +248,7 @@ class Database:
             return None
 
     async def get_express_group(self, group_id):
+        """Получает данные экспресса по ID"""
         try:
             import json
             row = await self.conn.fetchrow(
@@ -257,6 +270,7 @@ class Database:
     # === ОПЛАТА (КРИПТО) ===
 
     async def save_invoice(self, invoice_id, user_id, username, plan, amount):
+        """Сохраняет инвойс"""
         try:
             await self.conn.execute("""
                 INSERT INTO invoices (invoice_id, user_id, username, plan, amount, status)
@@ -271,6 +285,7 @@ class Database:
             logger.error(f"Ошибка сохранения инвойса: {e}")
 
     async def get_pending_invoices(self):
+        """Получает список неоплаченных инвойсов"""
         try:
             rows = await self.conn.fetch(
                 "SELECT invoice_id, user_id, username, plan FROM invoices WHERE status = 'pending'"
@@ -281,6 +296,7 @@ class Database:
             return []
 
     async def mark_invoice_paid(self, invoice_id):
+        """Отмечает инвойс как оплаченный"""
         try:
             await self.conn.execute(
                 "UPDATE invoices SET status = 'paid' WHERE invoice_id = $1",
@@ -292,6 +308,7 @@ class Database:
     # === VIP ПОДПИСКИ ===
 
     async def save_subscription(self, user_id, username, plan, invoice_id, expires_at):
+        """Сохраняет подписку"""
         try:
             await self.conn.execute("""
                 INSERT INTO subscriptions (user_id, username, plan, invoice_id, status, expires_at)
@@ -307,6 +324,7 @@ class Database:
             logger.error(f"Ошибка сохранения подписки: {e}")
 
     async def get_expired_subscriptions(self):
+        """Получает список истёкших подписок"""
         try:
             now = datetime.now(timezone.utc)
             rows = await self.conn.fetch(
@@ -319,6 +337,7 @@ class Database:
             return []
 
     async def deactivate_subscription(self, user_id):
+        """Деактивирует подписку"""
         try:
             await self.conn.execute(
                 "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1",
@@ -388,6 +407,7 @@ class Database:
     # === РЕФЕРАЛЬНАЯ ПРОГРАММА ===
 
     async def add_referral(self, referrer_id: int, user_id: int, username: str) -> bool:
+        """Добавить реферала"""
         try:
             await self.conn.execute("""
                 INSERT INTO referrals (referrer_id, user_id, username, created_at)
@@ -400,6 +420,7 @@ class Database:
             return False
 
     async def get_referral_by_user(self, user_id: int):
+        """Получить реферала по user_id"""
         try:
             row = await self.conn.fetchrow(
                 "SELECT * FROM referrals WHERE user_id = $1",
@@ -411,6 +432,7 @@ class Database:
             return None
 
     async def get_user_referrals(self, user_id: int) -> list:
+        """Получить всех рефералов пользователя"""
         try:
             rows = await self.conn.fetch(
                 "SELECT username, created_at FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC",
@@ -424,6 +446,7 @@ class Database:
     # === СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ ===
 
     async def get_user_stats(self, user_id: int):
+        """Получает статистику конкретного пользователя"""
         try:
             teams = await self.get_user_favorites(user_id)
             return {
@@ -437,6 +460,7 @@ class Database:
             return {"views": 0, "votes": 0, "follows": 0, "teams": []}
 
     async def get_referral_stats(self, user_id: int) -> dict:
+        """Получить статистику рефералов"""
         try:
             row = await self.conn.fetchrow(
                 "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1",
@@ -452,9 +476,3 @@ class Database:
     async def close(self):
         if self.conn:
             await self.conn.close()
-'''
-
-with open('/mnt/agents/output/db.py', 'w', encoding='utf-8') as f:
-    f.write(updated_db_py)
-
-print(f"db.py сохранён: {len(updated_db_py)} байт")
