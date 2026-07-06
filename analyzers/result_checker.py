@@ -9,9 +9,10 @@ MSK = timezone(timedelta(hours=3))
 
 
 class ResultChecker:
-    """Проверяет результаты завершённых матчей"""
+    """Проверяет результаты завершённых матчей через API-Football"""
 
-    BASE_URL = "https://www.thesportsdb.com/api/v1/json/3"
+    BASE_URL = "https://v3.football.api-sports.io"
+    API_KEY = "c044e6b190cd055586e06945783597f2"
 
     async def run(self):
         """Основной метод проверки"""
@@ -33,98 +34,91 @@ class ResultChecker:
         wins = 0
         losses = 0
         skipped = 0
+        not_finished = 0
 
         for match in pending:
             fixture_id, home_team, away_team, match_date, prediction = match
 
-            # Проверяем, прошёл ли матч
             try:
+                # Проверяем, прошёл ли матч (2+ часа после начала)
                 match_dt = datetime.fromisoformat(match_date.replace("Z", "+00:00"))
                 now = datetime.now(timezone.utc)
-
-                # Матч должен был завершиться (прошло 3+ часа после начала)
-                if now < match_dt + timedelta(hours=3):
+                
+                if now < match_dt + timedelta(hours=2):
+                    not_finished += 1
                     continue
 
-                # Пытаемся получить результат
-                result = await self._get_match_result(home_team, away_team, match_date)
+                # Получаем результат по fixture_id через API-Football
+                result = await self._get_match_result(fixture_id)
 
                 if result:
-                    # Определяем, выиграл ли прогноз
                     is_win = self._check_prediction_win(prediction, result)
 
                     if is_win:
-                        await db.update_result(fixture_id, "win")
+                        await db.update_result(fixture_id, 'win')
                         wins += 1
                         logger.info(f"✅ {home_team} vs {away_team}: ВЫИГРЫШ ({prediction})")
                     else:
-                        await db.update_result(fixture_id, "loss")
+                        await db.update_result(fixture_id, 'loss')
                         losses += 1
                         logger.info(f"❌ {home_team} vs {away_team}: ПРОИГРЫШ ({prediction})")
 
                     checked += 1
                 else:
-                    # ❗ НЕТ РЕЗУЛЬТАТА — пропускаем, НЕ генерируем случайный
+                    # Матч ещё не завершён или результат недоступен
                     skipped += 1
-                    logger.warning(f"⏳ {home_team} vs {away_team}: результат не найден, пропускаем")
+                    logger.debug(f"⏳ {home_team} vs {away_team}: результат недоступен")
 
             except Exception as e:
-                logger.debug(f"Ошибка проверки {fixture_id}: {e}")
+                logger.error(f"❌ Ошибка проверки {fixture_id}: {e}")
                 continue
 
         await db.close()
 
-        if checked > 0:
-            logger.info(f"✅ Проверено {checked} матчей: {wins} выигрышей, {losses} проигрышей")
-        if skipped > 0:
-            logger.info(f"⏳ Пропущено {skipped} матчей (результат не найден)")
-        if checked == 0 and skipped == 0:
-            logger.info("⏳ Нет завершённых матчей для проверки")
+        logger.info(f"📊 Итоги: проверено {checked}, выигрышей {wins}, проигрышей {losses}, пропущено {skipped}, не завершены {not_finished}")
 
-    async def _get_match_result(self, home_team: str, away_team: str, match_date: str) -> str:
-        """Получает результат матча из TheSportsDB"""
+    async def _get_match_result(self, fixture_id: str) -> str:
+        """Получает результат матча по fixture_id из API-Football"""
         try:
-            # Извлекаем дату
-            date_str = match_date[:10]
-
-            url = f"{self.BASE_URL}/eventsday.php?sport=Soccer&date={date_str}"
+            url = f"{self.BASE_URL}/fixtures"
+            headers = {"x-apisports-key": self.API_KEY}
+            params = {"id": fixture_id}
 
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url)
+                response = await client.get(url, headers=headers, params=params)
 
-                if response.status_code == 200:
-                    data = response.json()
+                if response.status_code != 200:
+                    logger.warning(f"⚠️ API вернул статус {response.status_code}")
+                    return None
 
-                    if "events" in data and data["events"]:
-                        for event in data["events"]:
-                            event_home = event.get("strHomeTeam", "")
-                            event_away = event.get("strAwayTeam", "")
+                data = response.json()
+                
+                if not data.get("response"):
+                    logger.debug(f"📭 Матч {fixture_id} не найден в API")
+                    return None
 
-                            # Проверяем совпадение команд
-                            if (home_team.lower() in event_home.lower() or event_home.lower() in home_team.lower()) and \
-                               (away_team.lower() in event_away.lower() or event_away.lower() in away_team.lower()):
+                fixture = data["response"][0]
+                status = fixture["fixture"]["status"]["short"]
+                
+                # Проверяем, завершён ли матч
+                if status not in ["FT", "AET", "PEN"]:
+                    logger.debug(f"⏳ Матч {fixture_id} ещё не завершён (статус: {status})")
+                    return None
 
-                                home_score = event.get("intHomeScore")
-                                away_score = event.get("intAwayScore")
+                goals = fixture.get("goals", {})
+                home = goals.get("home")
+                away = goals.get("away")
 
-                                if home_score is not None and away_score is not None:
-                                    try:
-                                        home_score = int(home_score)
-                                        away_score = int(away_score)
+                if home is None or away is None:
+                    logger.warning(f"⚠️ Счёт недоступен для {fixture_id}")
+                    return None
 
-                                        if home_score > away_score:
-                                            return "H"
-                                        elif home_score < away_score:
-                                            return "A"
-                                        else:
-                                            return "D"
-                                    except (ValueError, TypeError):
-                                        logger.warning(f"⚠️ Некорректные счёта: {home_score}:{away_score}")
-                                        return None
-
-            # ❗ РЕЗУЛЬТАТ НЕ НАЙДЕН — возвращаем None, НЕ случайное значение
-            logger.info(f"📭 Результат не найден: {home_team} vs {away_team} ({date_str})")
-            return None
+                if home > away:
+                    return "H"
+                elif home < away:
+                    return "A"
+                else:
+                    return "D"
 
         except Exception as e:
             logger.error(f"❌ Ошибка получения результата: {e}")
@@ -132,7 +126,6 @@ class ResultChecker:
 
     def _check_prediction_win(self, prediction: str, result: str) -> bool:
         """Проверяет, выиграл ли прогноз"""
-        # Маппинг прогнозов
         prediction_map = {
             "П1": "H",
             "X": "D",
