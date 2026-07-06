@@ -3,7 +3,7 @@ import logging
 import sys
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Dispatcher
 from config import settings
@@ -150,57 +150,27 @@ async def run_pipeline():
                 continue
                 
             # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
-             # Получаем все прогнозы
-            # Получаем все прогнозы
-ml_result = await asyncio.to_thread(
-    get_ml_model().predict,
-    home_team=home_team,
-    away_team=away_team,
-    match_date=match_date,
-    historical_df=historical_df
-)
+            ml_result = await asyncio.to_thread(
+                ml_model.predict,
+                home_team=home_team,
+                away_team=away_team,
+                match_date=match_date,
+                historical_df=historical_df
+            )
 
-# Основной прогноз (исход)
-outcome = ml_result.get('outcome', {})
-prediction = outcome.get('prediction', 'H')
-confidence = outcome.get('confidence', 0.5)
-
-# Дополнительные рынки
-markets = ml_result.get('markets', ml_result)
-total_pred = markets.get('total', {}).get('prediction', '')
-both_scored_pred = markets.get('both_scored', {}).get('prediction', '')
-handicap_pred = markets.get('handicap', {}).get('prediction', '')
-
-# Формируем текст прогноза с дополнительными рынками
-extra_markets = []
-if total_pred:
-    extra_markets.append(f"⚽ Тотал: {total_pred}")
-if both_scored_pred:
-    extra_markets.append(f"🥅 Обе забьют: {both_scored_pred}")
-if handicap_pred:
-    extra_markets.append(f"📊 Фора: {handicap_pred}")
-
-extra_text = "\n".join(extra_markets) if extra_markets else ""
-# Дополнительные рынки
-markets = ml_result.get('markets', ml_result)
-total_pred = markets.get('total', {}).get('prediction', '')
-both_scored_pred = markets.get('both_scored', {}).get('prediction', '')
-handicap_pred = markets.get('handicap', {}).get('prediction', '')
-
-# Формируем текст прогноза с дополнительными рынками
-extra_markets = []
-if total_pred:
-    extra_markets.append(f"⚽ Тотал: {total_pred}")
-if both_scored_pred:
-    extra_markets.append(f"🥅 Обе забьют: {both_scored_pred}")
-if handicap_pred:
-    extra_markets.append(f"📊 Фора: {handicap_pred}")
-
-extra_text = "\n".join(extra_markets) if extra_markets else ""
+            # 🔄 Multi-output обработка
+            if isinstance(ml_result, dict) and 'outcome' in ml_result:
+                # Новый формат (multi-output)
+                outcome = ml_result['outcome']
+                predicted_outcome = outcome['prediction']
+                confidence = outcome['confidence']
+            else:
+                # Старый формат
+                predicted_outcome = ml_result.get('prediction', 'H')
+                confidence = ml_result.get('confidence', 0.5)
 
             # Маппинг предсказания в русский формат
             outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
-            predicted_outcome = ml_result["prediction"]
             if predicted_outcome in outcome_mapping:
                 predicted_outcome = outcome_mapping[predicted_outcome]
             else:
@@ -219,7 +189,7 @@ extra_text = "\n".join(extra_markets) if extra_markets else ""
 
             pred = {
                 "prediction": predicted_outcome,
-                "confidence": ml_result["confidence"],
+                "confidence": confidence,
                 "odds_est": m.get("odds", 2.0),
                 "match": match_data
             }
@@ -421,7 +391,7 @@ async def send_stats_report():
     try:
         db = Database()
         await db.init()
-        stats = await db.get_stats(since=datetime.now(timezone.utc) - timedelta(days=7))
+        stats = await db.get_stats()
         publisher = TelegramPublisher()
         text = (
             f"📊 *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЕТ* 📊\n\n"
@@ -565,7 +535,7 @@ async def main():
         try:
             db = Database()
             await db.init()
-            stats = await db.get_stats(since=datetime.now(timezone.utc) - timedelta(days=1))
+            stats = await db.get_stats()
             publisher = TelegramPublisher()
             text = (
                 f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n"
