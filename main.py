@@ -3,7 +3,7 @@ import logging
 import sys
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Dispatcher
 from config import settings
@@ -375,16 +375,13 @@ async def check_results_job():
 
 
 async def send_stats_report():
-        """Еженедельный отчёт по понедельникам"""
-        db = None
-        publisher = None
-        try:
-            db = Database()
-            await db.init()
-            # Статистика за последние 7 дней
-            from datetime import timedelta
-            week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-            stats = await db.get_stats(since=week_ago)
+    """Еженедельный отчёт по понедельникам"""
+    db = None
+    publisher = None
+    try:
+        db = Database()
+        await db.init()
+        stats = await db.get_stats(since=datetime.now(timezone.utc) - timedelta(days=7))
         publisher = TelegramPublisher()
         text = (
             f"📊 *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЕТ* 📊\n\n"
@@ -523,16 +520,12 @@ async def main():
     scheduler.add_job(run_pipeline, "cron", hour=8, minute=0, id="morning_publisher")
 
     async def daily_stats_report():
-            db = None
-            publisher = None
-            try:
-                db = Database()
-                await db.init()
-                # Статистика за вчера (с 00:00 UTC)
-                from datetime import timedelta
-                yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-                yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-                stats = await db.get_stats(since=yesterday)
+        db = None
+        publisher = None
+        try:
+            db = Database()
+            await db.init()
+            stats = await db.get_stats(since=datetime.now(timezone.utc) - timedelta(days=1))
             publisher = TelegramPublisher()
             text = (
                 f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n"
