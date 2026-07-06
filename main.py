@@ -381,7 +381,8 @@ async def send_stats_report():
     try:
         db = Database()
         await db.init()
-        stats = await db.get_stats()
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        stats = await db.get_stats(since=week_ago)
         publisher = TelegramPublisher()
         text = (
             f"📊 *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЕТ* 📊\n\n"
@@ -525,7 +526,9 @@ async def main():
         try:
             db = Database()
             await db.init()
-            stats = await db.get_stats()
+            yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+            yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+            stats = await db.get_stats(since=yesterday)
             publisher = TelegramPublisher()
             text = (
                 f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n"
