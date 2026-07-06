@@ -195,9 +195,19 @@ class Database:
 
     # === СТАТИСТИКА ===
 
-    async def get_stats(self):
-        """Возвращает общую статистику прогнозов"""
-        try:
+    async def get_stats(self, since: Optional[datetime] = None):
+    """Возвращает статистику прогнозов. since — фильтр по дате создания."""
+    try:
+        if since:
+            row = await self.conn.fetchrow("""
+                SELECT
+                    COUNT(*) as total,
+                    COALESCE(SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END), 0) as wins,
+                    COALESCE(SUM(CASE WHEN result = 'loss' THEN 1 ELSE 0 END), 0) as losses
+                FROM predictions
+                WHERE created_at >= $1
+            """, since)
+        else:
             row = await self.conn.fetchrow("""
                 SELECT
                     COUNT(*) as total,
@@ -206,29 +216,23 @@ class Database:
                 FROM predictions
             """)
 
-            total = row["total"] or 0
-            wins = row["wins"] or 0
-            losses = row["losses"] or 0
-            pending = total - wins - losses
-            checked = wins + losses
-            winrate = (wins / checked * 100) if checked > 0 else 0.0
+        total = int(row["total"] or 0)
+        wins = int(row["wins"] or 0)
+        losses = int(row["losses"] or 0)
+        pending = total - wins - losses
+        checked = wins + losses
+        winrate = (wins / checked * 100) if checked > 0 else 0.0
 
-            # Упрощённый расчёт ROI
-            roi = 0.0
-            if checked > 0:
-                roi = (winrate - 50) * 2
-
-            return {
-                "total": total,
-                "wins": wins,
-                "losses": losses,
-                "pending": pending,
-                "winrate": winrate,
-                "roi": roi
-            }
-        except Exception as e:
-            logger.error(f"Ошибка статистики: {e}")
-            return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0, "roi": 0.0}
+        return {
+            "total": total,
+            "wins": wins,
+            "losses": losses,
+            "pending": pending,
+            "winrate": winrate,
+        }
+    except Exception as e:
+        logger.error(f"Ошибка статистики: {e}")
+        return {"total": 0, "wins": 0, "losses": 0, "pending": 0, "winrate": 0.0}
 
     # === ЭКСПРЕССЫ ===
 

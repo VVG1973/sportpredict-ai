@@ -376,6 +376,8 @@ async def check_results_job():
 
 async def send_stats_report():
     """Еженедельный отчёт по понедельникам"""
+    from datetime import timedelta
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     db = None
     publisher = None
     try:
@@ -521,6 +523,9 @@ async def main():
     scheduler.add_job(run_pipeline, "cron", hour=8, minute=0, id="morning_publisher")
 
     async def daily_stats_report():
+        from datetime import timedelta
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         db = None
         publisher = None
         try:
