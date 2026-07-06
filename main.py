@@ -1,5 +1,7 @@
-import asyncio
+
+updated_main_py = '''import asyncio
 import logging
+import signal
 import sys
 import pandas as pd
 from pathlib import Path
@@ -20,8 +22,15 @@ from data_collectors.real_sports_parser import HybridSportsParser as MultiSportP
 logger.info("🧪 ЗАПУСК В РЕЖИМЕ ГИБРИДНЫХ ДАННЫХ (Реальные + Mock)")
 
 from ml_models.prediction_model import PredictionModel
-# Инициализируем ML-модель один раз при старте
-ml_model = PredictionModel()
+
+# 🔴 ИСПРАВЛЕНО: Ленивая инициализация вместо глобальной
+_ml_model = None
+
+def get_ml_model():
+    global _ml_model
+    if _ml_model is None:
+        _ml_model = PredictionModel()
+    return _ml_model
 
 from telegram_bot.event_publisher import TelegramPublisher
 from database.db import Database
@@ -29,8 +38,10 @@ from analyzers.result_checker import ResultChecker
 from telegram_bot.admin_handlers import admin_router
 from telegram_bot.vip_manager import VIPManager, CryptoBotService, SubscriptionManager, SinglePurchaseService
 
-# Глобальный замок от одновременных запусков пайплайна
-is_pipeline_running = False
+# 🔴 ИСПРАВЛЕНО: asyncio.Lock() вместо глобального флага
+_pipeline_lock = asyncio.Lock()
+# Минимальный ID реального матча (вынесено из магического числа)
+MIN_REAL_FIXTURE_ID = getattr(settings, "MIN_REAL_FIXTURE_ID", 10000)
 
 logger.info("⏳ Инициализация ML-модели завершена")
 
@@ -63,146 +74,156 @@ async def create_and_publish_express(candidates, count, price, manager, publishe
     
     # Публикуем экспресс в Telegram-канал
     success = await publisher.publish_express(express_events, group_id, price)
-    return success, events, total_odds
+    return success, events, total_odds, group_id
 
 
 async def run_pipeline():
     """Основной пайплайн: парсинг → ML-предсказание → публикация"""
-    global is_pipeline_running
     
-    # Защита от спама/одновременных запусков
-    if is_pipeline_running:
+    # 🔴 ИСПРАВЛЕНО: asyncio.Lock() вместо флага
+    if _pipeline_lock.locked():
         logger.warning("⏳ Пайплайн уже запущен, игнорируем повторный запрос")
         return 0
+    
+    async with _pipeline_lock:
+        # Объявляем переменные заранее, чтобы гарантированно закрыть их в блоке finally
+        publisher = None
+        db = None
+        manager = None
         
-    is_pipeline_running = True
-    
-    # Объявляем переменные заранее, чтобы гарантированно закрыть их в блоке finally
-    publisher = None
-    db = None
-    manager = None
-    
-    try:
-        parser = MultiSportParser(min_confidence=0.70)
-        publisher = TelegramPublisher()
-        db = Database()
-        await db.init()
-        manager = SubscriptionManager()
-        await manager.init()
-
-        matches = await parser.fetch_upcoming_matches(count=20)
-
-        # 🛡️ Фильтр фейковых матчей
-        real_matches = []
-        for m in matches:
-            fid = m.get("fixture", {}).get("id")
-            if fid and isinstance(fid, int) and fid > 10000:
-                real_matches.append(m)
-                
-        matches = real_matches
-
-        if not matches:
-            logger.info("📭 Реальных матчей не найдено. Фейковые матчи отключены.")
-            try:
-                await publisher.bot.send_message(
-                    chat_id=settings.ADMIN_ID,
-                    text="⚠️ <b>Публикация отменена:</b> Нет реальных матчей на сегодня.",
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logger.error(f"Не удалось отправить сообщение админу: {e}")
-            return 0
-
-        logger.info(f"📊 Найдено РЕАЛЬНЫХ матчей: {len(matches)}")
-
-        # 🧵 ОПТИМИЗАЦИЯ: Читаем тяжелый CSV файл в отдельном потоке, чтобы не блокировать бота
-        historical_df = None
         try:
-            hist_path = Path("data/historical/all_matches_clean.csv")
-            if hist_path.exists():
-                # Читаем файл асинхронно
-                historical_df = await asyncio.to_thread(
-                    pd.read_csv, hist_path, encoding="utf-8", low_memory=False
+            parser = MultiSportParser(min_confidence=0.70)
+            publisher = TelegramPublisher()
+            db = Database()
+            await db.init()
+            manager = SubscriptionManager()
+            await manager.init()
+
+            matches = await parser.fetch_upcoming_matches(count=20)
+
+            # 🛡️ Фильтр фейковых матчей
+            real_matches = []
+            for m in matches:
+                fid = m.get("fixture", {}).get("id")
+                if fid and isinstance(fid, int) and fid > MIN_REAL_FIXTURE_ID:
+                    real_matches.append(m)
+                    
+            matches = real_matches
+
+            if not matches:
+                logger.info("📭 Реальных матчей не найдено. Фейковые матчи отключены.")
+                try:
+                    await publisher.bot.send_message(
+                        chat_id=settings.ADMIN_ID,
+                        text="⚠️ <b>Публикация отменена:</b> Нет реальных матчей на сегодня.",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить сообщение админу: {e}")
+                return 0
+
+            logger.info(f"📊 Найдено РЕАЛЬНЫХ матчей: {len(matches)}")
+
+            # 🧵 ОПТИМИЗАЦИЯ: Читаем тяжелый CSV файл в отдельном потоке, чтобы не блокировать бота
+            historical_df = None
+            try:
+                hist_path = Path("data/historical/all_matches_clean.csv")
+                if hist_path.exists():
+                    # Читаем файл асинхронно
+                    historical_df = await asyncio.to_thread(
+                        pd.read_csv, hist_path, encoding="utf-8", low_memory=False
+                    )
+                    
+                    # Функция для конвертации дат, которую мы тоже запустим асинхронно
+                    def parse_dates(df):
+                        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+                        return df
+                    
+                    historical_df = await asyncio.to_thread(parse_dates, historical_df)
+                    logger.info(f"📚 Загружено {len(historical_df)} исторических матчей в фоновом потоке")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось загрузить исторические данные: {e}")
+
+            # 🟡 ИСПРАВЛЕНО: Параллельные ML-предсказания через asyncio.gather
+            async def process_match(m):
+                """Обработка одного матча — вызывается параллельно"""
+                home_team = m["teams"]["home"]["name"]
+                away_team = m["teams"]["away"]["name"]
+                match_date = pd.to_datetime(m["fixture"]["date"], errors="coerce")
+                
+                # Жесткий фильтр прошедших матчей
+                now = pd.Timestamp.now(tz="UTC")
+                if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
+                    return None
+                    
+                # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
+                ml_result = await asyncio.to_thread(
+                    get_ml_model().predict,
+                    home_team=home_team,
+                    away_team=away_team,
+                    match_date=match_date,
+                    historical_df=historical_df
                 )
-                
-                # Функция для конвертации дат, которую мы тоже запустим асинхронно
-                def parse_dates(df):
-                    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-                    return df
-                
-                historical_df = await asyncio.to_thread(parse_dates, historical_df)
-                logger.info(f"📚 Загружено {len(historical_df)} исторических матчей в фоновом потоке")
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось загрузить исторические данные: {e}")
 
-        vip_predictions = []
-        express_candidates = []
-        regular_predictions = []
+                # Маппинг предсказания в русский формат
+                outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
+                predicted_outcome = ml_result["prediction"]
+                if predicted_outcome in outcome_mapping:
+                    predicted_outcome = outcome_mapping[predicted_outcome]
+                else:
+                    predicted_outcome = m.get("outcome", "П1")
 
-        for m in matches:
-            home_team = m["teams"]["home"]["name"]
-            away_team = m["teams"]["away"]["name"]
-            match_date = pd.to_datetime(m["fixture"]["date"], errors="coerce")
+                match_data = {
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "date": m["fixture"]["date"],
+                    "fixture_id": m["fixture"]["id"],
+                    "sport": m.get("sport", "⚽ Футбол"),
+                    "league": m.get("league", ""),
+                    "odds_url": m.get("odds_url") or f"https://www.google.com/search?q={home_team}+{away_team}+betting+odds"
+                }
+
+                pred = {
+                    "prediction": predicted_outcome,
+                    "confidence": ml_result["confidence"],
+                    "odds_est": m.get("odds", 2.0),
+                    "match": match_data
+                }
+
+                return pred
+
+            # Запускаем обработку всех матчей параллельно
+            tasks = [process_match(m) for m in matches]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Жесткий фильтр прошедших матчей
-            now = pd.Timestamp.now(tz="UTC")
-            if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
-                continue
+            vip_predictions = []
+            express_candidates = []
+            regular_predictions = []
+            
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"❌ Ошибка обработки матча: {result}")
+                    continue
+                if result is None:
+                    continue
                 
-            # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
-            ml_result = await asyncio.to_thread(
-                ml_model.predict,
-                home_team=home_team,
-                away_team=away_team,
-                match_date=match_date,
-                historical_df=historical_df
-            )
+                pred = result
+                # Категоризация по уровню уверенности
+                if pred["confidence"] >= settings.VIP_CONFIDENCE_THRESHOLD:
+                    vip_predictions.append(pred)
+                elif pred["confidence"] >= 0.71:
+                    express_candidates.append(pred)
+                else:
+                    regular_predictions.append(pred)
 
-            # Маппинг предсказания в русский формат
-            outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
-            predicted_outcome = ml_result["prediction"]
-            if predicted_outcome in outcome_mapping:
-                predicted_outcome = outcome_mapping[predicted_outcome]
-            else:
-                predicted_outcome = m.get("outcome", "П1")
+            published = 0
 
-            # 🛡️ ИСПРАВЛЕН БАГ: Словарь match_data теперь вынесен ИЗ блока else и доступен ВСЕГДА
-            match_data = {
-                "home_team": home_team,
-                "away_team": away_team,
-                "date": m["fixture"]["date"],
-                "fixture_id": m["fixture"]["id"],
-                "sport": m.get("sport", "⚽ Футбол"),
-                "league": m.get("league", ""),
-                "odds_url": m.get("odds_url") or f"https://www.google.com/search?q={home_team}+{away_team}+betting+odds"
-            }
-
-            pred = {
-                "prediction": predicted_outcome,
-                "confidence": ml_result["confidence"],
-                "odds_est": m.get("odds", 2.0),
-                "match": match_data
-            }
-
-            # Категоризация по уровню уверенности
-            if pred["confidence"] >= settings.VIP_CONFIDENCE_THRESHOLD:
-                vip_predictions.append(pred)
-            elif pred["confidence"] >= 0.71:
-                express_candidates.append(pred)
-            else:
-                regular_predictions.append(pred)
-
-        published = 0
-
-        # 1️⃣ Публикация VIP-прогнозов
-        for pred in vip_predictions:
-            if await publisher.publish(pred, is_vip=True, is_single_purchase=False):
-                published += 1
-
-        # 2️⃣ Публикация обычных прогнозов
-        for pred in regular_predictions:
-            if await publisher.publish(pred, is_vip=False, is_single_purchase=False):
-                published += 1
+            # 1️⃣ Публикация VIP-прогнозов
+            for pred in vip_predictions:
+                if await publisher.publish(pred, is_vip=True, is_single_purchase=False):
+                    published += 1
+                
+                # 🟡 ИСПРАВЛЕНО: Сохраняем VIP-прогнозы в БД тоже
                 await db.save_prediction(
                     fixture_id=pred["match"]["fixture_id"],
                     home=pred["match"]["home_team"],
@@ -213,165 +234,206 @@ async def run_pipeline():
                     odds=pred["odds_est"]
                 )
 
-                # Уведомления подписчикам любимых команд
-                try:
-                    home_team = pred["match"]["home_team"]
-                    away_team = pred["match"]["away_team"]
-
-                    home_followers = await db.get_team_followers(home_team)
-                    away_followers = await db.get_team_followers(away_team)
-                    all_followers = home_followers + away_followers
-
-                    if all_followers:
-                        sport = pred["match"]["sport"]
-                        league = pred["match"]["league"]
-                        date_ru = pred["match"]["date"][:16].replace("T", " ")
-
-                        personal_text = (
-                            f"⚡ <b>Прогноз на вашу команду!</b>\n\n"
-                            f"{sport} | <i>{league}</i>\n"
-                            f"🏟 <b>{home_team}</b> — <b>{away_team}</b>\n"
-                            f"📅 <i>{date_ru}</i>\n\n"
-                            f"🎯 <b>Прогноз:</b> {pred['prediction']}\n"
-                            f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}\n"
-                            f"💰 <b>Коэф:</b> {pred['odds_est']}\n\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"⚠️ <i>Ответственная игра. 18+</i>"
-                        )
-
-                        sent_count = 0
-                        for user_id, username in all_followers:
-                            try:
-                                await publisher.bot.send_message(
-                                    chat_id=user_id,
-                                    text=personal_text,
-                                    parse_mode="HTML"
-                                )
-                                sent_count += 1
-                                await asyncio.sleep(0.05)
-                            except Exception as e:
-                                logger.debug(f"Не удалось отправить {username}: {e}")
-
-                        if sent_count > 0:
-                            logger.info(f"📨 Отправлено личных уведомлений: {sent_count} на матч {home_team} - {away_team}")
-                except Exception as e:
-                    logger.warning(f"Ошибка отправки уведомлений подписчикам: {e}")
-
-        # 3️⃣ Публикация Экспрессов
-        express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
-        express_published = 0
-        admin_express_details = []
-
-        # Сценарий А: Кандидатов много (>= 5) -> делаем один экспресс х2 и один х3
-        if len(express_candidates) >= 5:
-            # Экспресс х2 (берем первые 2 лучших кандидата)
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[:2],
-                count=2,
-                price=149,
-                manager=manager,
-                publisher=publisher,
-                express_label="Экспресс x2"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"🔥 Экспресс x2 (149₽) — коэф {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 149
-                })
-
-            # Экспресс х3 (берем следующих 3 кандидатов)
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[2:5],
-                count=3,
-                price=199,
-                manager=manager,
-                publisher=publisher,
-                express_label="Экспресс x3"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"🔥 Экспресс x3 (199₽) — коэф {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 199
-                })
-
-        # Сценарий Б: Кандидатов мало (от 2 до 4) -> делаем только один экспресс х2
-        elif len(express_candidates) >= 2:
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[:2],
-                count=2,
-                price=149,
-                manager=manager,
-                publisher=publisher,
-                express_label="Экспресс x2"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"🔥 Экспресс x2 (149₽) — коэф {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 149
-                })
-            logger.info(f"⚠️ Создан только 1 экспресс. Недостаточно кандидатов для второго: {len(express_candidates)}")
-
-        # Отправляем отчет админу в ЛС
-        if admin_express_details:
-            try:
-                admin_text = "🔓 <b>ДЕТАЛИ СФОРМИРОВАННЫХ ЭКСПРЕССОВ</b>\n\n"
-                for express in admin_express_details:
-                    admin_text += f"<b>{express['title']}</b>\n"
-                    admin_text += f"━━━━━━━━━━━━━━━━━━━━━\n"
-                    for i, ev in enumerate(express["events"], 1):
-                        admin_text += (
-                            f"<b>{i}.</b> {ev['sport']} | <i>{ev['league']}</i>\n"
-                            f"🏟 <b>{ev['home_team']}</b> — <b>{ev['away_team']}</b>\n"
-                            f"📅 <i>{ev['date'][:16].replace('T', ' ')}</i>\n"
-                            f"🎯 <b>Исход: {ev['prediction']}</b>\n"
-                            f"📊 Уверенность: {ev['confidence']:.0%}\n"
-                            f"💰 Коэф: {ev['odds']}\n\n"
-                        )
-                    admin_text += (
-                        f"💵 <b>Цена:</b> {express['price']}₽\n"
-                        f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}\n\n"
+            # 2️⃣ Публикация обычных прогнозов
+            for pred in regular_predictions:
+                if await publisher.publish(pred, is_vip=False, is_single_purchase=False):
+                    published += 1
+                    await db.save_prediction(
+                        fixture_id=pred["match"]["fixture_id"],
+                        home=pred["match"]["home_team"],
+                        away=pred["match"]["away_team"],
+                        date=pred["match"]["date"],
+                        pred=pred["prediction"],
+                        conf=pred["confidence"],
+                        odds=pred["odds_est"]
                     )
-                admin_text += "━━━━━━━━━━━━━━━━━━━━━\n"
-                admin_text += f"📤 Всего опубликовано экспрессов: {express_published}"
-                await publisher.bot.send_message(chat_id=settings.ADMIN_ID, text=admin_text, parse_mode="HTML")
-                logger.info("📨 Детали экспрессов отправлены администратору")
-            except Exception as e:
-                logger.error(f"Ошибка отправки отчета админу: {e}")
 
-        logger.info(f"📤 Пайплайн завершен. Опубликовано прогнозов: {published} (VIP: {len(vip_predictions)}, Обычные: {len(regular_predictions)}, Экспрессы: {express_published})")
-        return published
-        
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка в пайплайне: {e}")
-        return 0
-    finally:
-        # 🛡️ ГАРАНТИРОВАННОЕ ЗАКРЫТИЕ: Сессии закроются при любом исходе
-        if publisher:
-            await publisher.close()
-        if db and hasattr(db, 'close'):
-            try:
-                await db.close()
-            except Exception:
-                pass
-        is_pipeline_running = False
+                    # Уведомления подписчикам любимых команд
+                    try:
+                        home_team = pred["match"]["home_team"]
+                        away_team = pred["match"]["away_team"]
+
+                        home_followers = await db.get_team_followers(home_team)
+                        away_followers = await db.get_team_followers(away_team)
+                        all_followers = home_followers + away_followers
+
+                        if all_followers:
+                            sport = pred["match"]["sport"]
+                            league = pred["match"]["league"]
+                            date_ru = pred["match"]["date"][:16].replace("T", " ")
+
+                            personal_text = (
+                                f"⚡ <b>Прогноз на вашу команду!</b>\\n\\n"
+                                f"{sport} | <i>{league}</i>\\n"
+                                f"🏟 <b>{home_team}</b> — <b>{away_team}</b>\\n"
+                                f"📅 <i>{date_ru}</i>\\n\\n"
+                                f"🎯 <b>Прогноз:</b> {pred['prediction']}\\n"
+                                f"📊 <b>Уверенность:</b> {pred['confidence']:.0%}\\n"
+                                f"💰 <b>Коэф:</b> {pred['odds_est']}\\n\\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━\\n"
+                                f"⚠️ <i>Ответственная игра. 18+</i>"
+                            )
+
+                            sent_count = 0
+                            for user_id, username in all_followers:
+                                try:
+                                    await publisher.bot.send_message(
+                                        chat_id=user_id,
+                                        text=personal_text,
+                                        parse_mode="HTML"
+                                    )
+                                    sent_count += 1
+                                    await asyncio.sleep(0.05)
+                                except Exception as e:
+                                    logger.debug(f"Не удалось отправить {username}: {e}")
+
+                            if sent_count > 0:
+                                logger.info(f"📨 Отправлено личных уведомлений: {sent_count} на матч {home_team} - {away_team}")
+                    except Exception as e:
+                        logger.warning(f"Ошибка отправки уведомлений подписчикам: {e}")
+
+            # 3️⃣ Публикация Экспрессов
+            express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+            express_published = 0
+            admin_express_details = []
+
+            # Сценарий А: Кандидатов много (>= 5) -> делаем один экспресс х2 и один х3
+            if len(express_candidates) >= 5:
+                # Экспресс х2 (берем первые 2 лучших кандидата)
+                success, events, odds, group_id = await create_and_publish_express(
+                    candidates=express_candidates[:2],
+                    count=2,
+                    price=149,
+                    manager=manager,
+                    publisher=publisher,
+                    express_label="Экспресс x2"
+                )
+                if success:
+                    express_published += 1
+                    published += 1
+                    admin_express_details.append({
+                        "title": f"🔥 Экспресс x2 (149₽) — коэф {odds:.2f}",
+                        "events": events,
+                        "group_id": group_id,
+                        "total_odds": odds,
+                        "price": 149
+                    })
+
+                # Экспресс х3 (берем следующих 3 кандидатов)
+                success, events, odds, group_id = await create_and_publish_express(
+                    candidates=express_candidates[2:5],
+                    count=3,
+                    price=199,
+                    manager=manager,
+                    publisher=publisher,
+                    express_label="Экспресс x3"
+                )
+                if success:
+                    express_published += 1
+                    published += 1
+                    admin_express_details.append({
+                        "title": f"🔥 Экспресс x3 (199₽) — коэф {odds:.2f}",
+                        "events": events,
+                        "group_id": group_id,
+                        "total_odds": odds,
+                        "price": 199
+                    })
+
+            # Сценарий Б: Кандидатов мало (от 2 до 4) -> делаем только один экспресс х2
+            elif len(express_candidates) >= 2:
+                success, events, odds, group_id = await create_and_publish_express(
+                    candidates=express_candidates[:2],
+                    count=2,
+                    price=149,
+                    manager=manager,
+                    publisher=publisher,
+                    express_label="Экспресс x2"
+                )
+                if success:
+                    express_published += 1
+                    published += 1
+                    admin_express_details.append({
+                        "title": f"🔥 Экспресс x2 (149₽) — коэф {odds:.2f}",
+                        "events": events,
+                        "group_id": group_id,
+                        "total_odds": odds,
+                        "price": 149
+                    })
+                logger.info(f"⚠️ Создан только 1 экспресс. Недостаточно кандидатов для второго: {len(express_candidates)}")
+
+            # Отправляем отчет админу в ЛС
+            if admin_express_details:
+                try:
+                    admin_text = "🔓 <b>ДЕТАЛИ СФОРМИРОВАННЫХ ЭКСПРЕССОВ</b>\\n\\n"
+                    for express in admin_express_details:
+                        admin_text += f"<b>{express['title']}</b>\\n"
+                        admin_text += f"━━━━━━━━━━━━━━━━━━━━━\\n"
+                        for i, ev in enumerate(express["events"], 1):
+                            admin_text += (
+                                f"<b>{i}.</b> {ev['sport']} | <i>{ev['league']}</i>\\n"
+                                f"🏟 <b>{ev['home_team']}</b> — <b>{ev['away_team']}</b>\\n"
+                                f"📅 <i>{ev['date'][:16].replace('T', ' ')}</i>\\n"
+                                f"🎯 <b>Исход: {ev['prediction']}</b>\\n"
+                                f"📊 Уверенность: {ev['confidence']:.0%}\\n"
+                                f"💰 Коэф: {ev['odds']}\\n\\n"
+                            )
+                        admin_text += (
+                            f"💵 <b>Цена:</b> {express['price']}₽\\n"
+                            f"📈 <b>Общий коэф:</b> {express['total_odds']:.2f}\\n\\n"
+                        )
+                    admin_text += "━━━━━━━━━━━━━━━━━━━━━\\n"
+                    admin_text += f"📤 Всего опубликовано экспрессов: {express_published}"
+                    await publisher.bot.send_message(chat_id=settings.ADMIN_ID, text=admin_text, parse_mode="HTML")
+                    logger.info("📨 Детали экспрессов отправлены администратору")
+                except Exception as e:
+                    logger.error(f"Ошибка отправки отчета админу: {e}")
+
+            logger.info(f"📤 Пайплайн завершен. Опубликовано прогнозов: {published} (VIP: {len(vip_predictions)}, Обычные: {len(regular_predictions)}, Экспрессы: {express_published})")
+            return published
+            
+        except Exception as e:
+            logger.error(f"❌ Критическая ошибка в пайплайне: {e}")
+            return 0
+        finally:
+            # 🛡️ ГАРАНТИРОВАННОЕ ЗАКРЫТИЕ: Сессии закроются при любом исходе
+            if publisher:
+                await publisher.close()
+            if db and hasattr(db, 'close'):
+                try:
+                    await db.close()
+                except Exception as e:
+                    logger.debug(f"Ошибка закрытия БД: {e}")
 
 
 async def check_results_job():
     """Проверка результатов матчей"""
     checker = ResultChecker()
     await checker.run()
+
+
+# 🟡 ИСПРАВЛЕНО: Вынесено форматирование статистики (DRY)
+def _format_stats_text(stats, is_weekly=False):
+    """Форматирование текста статистики"""
+    header = "📊 *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЕТ* 📊" if is_weekly else "📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊"
+    parse_mode = "Markdown" if is_weekly else "HTML"
+    
+    text = (
+        f"{header}\\n\\n"
+        f"🏟 Всего прогнозов: {stats['total']}\\n"
+        f"✅ Выигрышей: {stats['wins']}\\n"
+        f"❌ Проигрышей: {stats['losses']}\\n"
+        f"⏳ Ожидают расчета: {stats['pending']}\\n"
+        f"🎯 Винрейт: {stats['winrate']:.1f}%\\n"
+    )
+    
+    if not is_weekly:
+        text += (
+            f"━━━━━━━━━━━━━━━━━━━━━\\n"
+            f"💡 <i>Подписывайтесь на VIP для эксклюзивных прогнозов!</i>\\n\\n"
+            f"⚠️ <i>Дисклеймер: Прогнозы носят информационный характер. Ответственная игра. 18+</i>"
+        )
+    
+    return text, parse_mode
 
 
 async def send_stats_report():
@@ -383,15 +445,8 @@ async def send_stats_report():
         await db.init()
         stats = await db.get_stats()
         publisher = TelegramPublisher()
-        text = (
-            f"📊 *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЕТ* 📊\n\n"
-            f"🏟 Всего прогнозов: {stats['total']}\n"
-            f"✅ Выигрышей: {stats['wins']}\n"
-            f"❌ Проигрышей: {stats['losses']}\n"
-            f"⏳ Ожидают расчета: {stats['pending']}\n"
-            f"🎯 Винрейт: {stats['winrate']:.1f}%\n"
-        )
-        await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="Markdown")
+        text, parse_mode = _format_stats_text(stats, is_weekly=True)
+        await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode=parse_mode)
     except Exception as e:
         logger.error(f"Ошибка генерации еженедельного отчета: {e}")
     finally:
@@ -401,12 +456,12 @@ async def send_stats_report():
         if db and hasattr(db, 'close'):
             try:
                 await db.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Ошибка закрытия БД: {e}")
 
 
 async def check_crypto_payments():
-    """Проверка оплат CryptoBot каждые 30 секунд"""
+    """Проверка оплат CryptoBot"""
     publisher = None
     service = None
     manager = None
@@ -480,8 +535,8 @@ async def check_crypto_payments():
                         await publisher.bot.send_message(
                             chat_id=inv["user_id"], 
                             text=(
-                                f"🎉 <b>Оплата успешно получена!</b>\n\n"
-                                f"👑 VIP доступен до: <b>{expires_msk.strftime('%d.%m.%Y %H:%M')} (МСК)</b>\n\n"
+                                f"🎉 <b>Оплата успешно получена!</b>\\n\\n"
+                                f"👑 VIP доступен до: <b>{expires_msk.strftime('%d.%m.%Y %H:%M')} (МСК)</b>\\n\\n"
                                 f"🔗 <a href='{invite_link}'>👉 НАЖМИТЕ СЮДА, ЧТОБЫ ВОЙТИ В VIP</a>"
                             ), 
                             parse_mode="HTML", 
@@ -522,23 +577,14 @@ async def main():
     async def daily_stats_report():
         db = None
         publisher = None
+        
         try:
             db = Database()
             await db.init()
             stats = await db.get_stats()
             publisher = TelegramPublisher()
-            text = (
-                f"📊 <b>СТАТИСТИКА ЗА ВЧЕРА</b> 📊\n\n"
-                f"🏟 Сыграно прогнозов: {stats['total']}\n"
-                f"✅ Выигрышей: {stats['wins']}\n"
-                f"❌ Проигрышей: {stats['losses']}\n"
-                f"⏳ Ожидают результата: {stats['pending']}\n"
-                f"🎯 <b>Винрейт:</b> {stats['winrate']:.1f}%\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>Подписывайтесь на VIP для эксклюзивных прогнозов!</i>\n\n"
-                f"⚠️ <i>Дисклеймер: Прогнозы носят информационный характер. Ответственная игра. 18+</i>"
-            )
-            await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="HTML")
+            text, parse_mode = _format_stats_text(stats, is_weekly=False)
+            await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode=parse_mode)
             logger.info("📊 Ежедневная статистика отправлена в канал")
         except Exception as e:
             logger.error(f"Ошибка ежедневной статистики: {e}")
@@ -548,8 +594,8 @@ async def main():
             if db and hasattr(db, 'close'):
                 try:
                     await db.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Ошибка закрытия БД: {e}")
 
     scheduler.add_job(daily_stats_report, "cron", hour=8, minute=5, id="daily_stats")
     scheduler.add_job(check_results_job, "interval", minutes=30, next_run_time=datetime.now(), id="result_checker")
@@ -568,9 +614,31 @@ async def main():
                 await p.close()
 
     scheduler.add_job(check_expired_vip, "interval", hours=1, next_run_time=datetime.now(), id="vip_checker")
-    scheduler.add_job(check_crypto_payments, "interval", seconds=30, next_run_time=datetime.now(), id="crypto_checker")
+    
+    # 🟡 ИСПРАВЛЕНО: Раз в минуту вместо 30 секунд
+    scheduler.add_job(check_crypto_payments, "interval", minutes=1, next_run_time=datetime.now(), id="crypto_checker")
     
     scheduler.start()
+    
+    # 🟡 ИСПРАВЛЕНО: Graceful shutdown по Ctrl+C
+    loop = asyncio.get_event_loop()
+    
+    async def _shutdown():
+        """Graceful shutdown"""
+        logger.info("🛑 Получен сигнал завершения, останавливаемся...")
+        scheduler.shutdown(wait=False)
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        loop.stop()
+    
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(_shutdown()))
+        except NotImplementedError:
+            # Windows не поддерживает add_signal_handler
+            pass
 
     # Инициализация Aiogram Bot & Dispatcher
     publisher = TelegramPublisher()
@@ -591,4 +659,16 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Остановка по запросу пользователя")
+    except Exception as e:
+        logger.critical(f"💥 Критическая ошибка: {e}", exc_info=True)
+'''
+
+# Сохраняем
+with open('/mnt/agents/output/main.py', 'w', encoding='utf-8') as f:
+    f.write(updated_main_py)
+
+print(f"Файл сохранён: {len(updated_main_py)} байт")
