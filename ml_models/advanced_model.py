@@ -16,7 +16,7 @@ class AdvancedPredictionModel:
     def __init__(self, model_dir: str = "ml_models"):
         self.models = {}
         self.feature_cols = []
-        self.accuracy = {}
+        self.accuracy = meta.get("accuracy", {})
         self.is_loaded = False
         self._load_model()
 
