@@ -161,17 +161,24 @@ async def run_pipeline():
             # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
             # Используем predict_with_value если доступен
             predict_method = getattr(ml_model, 'predict_with_value', ml_model.predict)
-            
+
+            # Собираем данные для ML-модели (с коэффициентами для value bet)
+            ml_input = {
+                "home_team": home_team,
+                "away_team": away_team,
+                "match_date": str(match_date),
+                "odds": match_odds,
+                "B365H": match_odds.get("home", 0) or m.get("odds", {}).get("home", 0),
+                "B365D": match_odds.get("draw", 0) or m.get("odds", {}).get("draw", 0),
+                "B365A": match_odds.get("away", 0) or m.get("odds", {}).get("away", 0),
+            }
+
+            if historical_df is not None:
+                ml_input["historical_df"] = historical_df
+
             ml_result = await asyncio.to_thread(
                 predict_method,
-                home_team=home_team,
-                away_team=away_team,
-                match_date=match_date,
-                historical_df=historical_df,
-                odds=match_odds,
-                B365H=match_odds.get('home', 0),
-                B365D=match_odds.get('draw', 0),
-                B365A=match_odds.get('away', 0),
+                ml_input
             )
 
             # 🔄 Multi-output обработка
@@ -217,9 +224,10 @@ async def run_pipeline():
                 "confidence": confidence,
                 "odds_est": m.get("odds", 2.0),
                 "match": match_data,
-                "total": total_pred,
-                "both_scored": both_scored_pred,
-                "handicap": handicap_pred,
+                "total": ml_result.get("total", {}) if isinstance(ml_result, dict) else {},
+                "both_scored": ml_result.get("both_scored", {}) if isinstance(ml_result, dict) else {},
+                "handicap": ml_result.get("handicap", {}) if isinstance(ml_result, dict) else {},
+                "outcome": ml_result.get("outcome", {}) if isinstance(ml_result, dict) else {},
             }
 
             # Категоризация по уровню уверенности
@@ -623,7 +631,20 @@ async def main():
     logger.info("🤖 SportPredict AI запущен и готов к работе. Расписание: 8:00 МСК ежедневно.")
     
     try:
-        await dp.start_polling(publisher.bot)
+    
+    @dp.message(Command("run"))
+    async def cmd_run(message: types.Message):
+        if message.from_user.id != settings.ADMIN_ID:
+            await message.answer("❌ Только для администратора")
+            return
+        await message.answer("🚀 Запускаю пайплайн...")
+        try:
+            count = await run_pipeline()
+            await message.answer(f"✅ Пайплайн завершен. Опубликовано: {count}")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {e}")
+
+    await dp.start_polling(publisher.bot)
     finally:
         await publisher.close()
 

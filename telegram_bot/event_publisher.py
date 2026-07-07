@@ -137,15 +137,21 @@ class TelegramPublisher:
         vip_badge = "👑 **VIP-ПРОГНОЗ**\n\n" if is_vip else ""
         # Дополнительные рынки из multi-output
         extra_lines = []
-        total = prediction.get("total", "")
-        both_scored = prediction.get("both_scored", "")
-        handicap = prediction.get("handicap", "")
+        total = prediction.get("total", {})
+        both_scored = prediction.get("both_scored", {})
+        handicap = prediction.get("handicap", {})
 
-        if total:
+        if isinstance(total, dict) and total.get("prediction"):
+            extra_lines.append(f"⚽ Тотал: {total.get('prediction')}")
+        elif isinstance(total, str) and total:
             extra_lines.append(f"⚽ Тотал: {total}")
-        if both_scored:
+        if isinstance(both_scored, dict) and both_scored.get("prediction"):
+            extra_lines.append(f"🥅 Обе забьют: {both_scored.get('prediction')}")
+        elif isinstance(both_scored, str) and both_scored:
             extra_lines.append(f"🥅 Обе забьют: {both_scored}")
-        if handicap:
+        if isinstance(handicap, dict) and handicap.get("prediction"):
+            extra_lines.append(f"📊 Фора: {handicap.get('prediction')}")
+        elif isinstance(handicap, str) and handicap:
             extra_lines.append(f"📊 Фора: {handicap}")
 
         extra_text = "\n".join(extra_lines)
