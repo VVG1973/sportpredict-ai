@@ -135,13 +135,31 @@ class TelegramPublisher:
             return
 
         vip_badge = "👑 **VIP-ПРОГНОЗ**\n\n" if is_vip else ""
+        # Дополнительные рынки из multi-output
+        extra_lines = []
+        total = prediction.get("total", "")
+        both_scored = prediction.get("both_scored", "")
+        handicap = prediction.get("handicap", "")
+
+        if total:
+            extra_lines.append(f"⚽ Тотал: {total}")
+        if both_scored:
+            extra_lines.append(f"🥅 Обе забьют: {both_scored}")
+        if handicap:
+            extra_lines.append(f"📊 Фора: {handicap}")
+
+        extra_text = "\n".join(extra_lines)
+        if extra_text:
+            extra_text = "\n" + extra_text + "\n"
+
         text = (
             f"{vip_badge}{sport} | {league}\n\n"
             f"🏟 **{home}** vs **{away}**\n"
             f"📅 {date_ru}\n\n"
             f"🎯 **Прогноз:** {pred}\n"
             f"📊 Уверенность: {conf:.0%}\n"
-            f"💰 Коэффициент: {odds:.2f}\n\n"
+            f"💰 Коэффициент: {odds:.2f}"
+            f"{extra_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n🤖 _SportPredict AI_"
         )
 
