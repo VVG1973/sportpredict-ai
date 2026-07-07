@@ -1,1 +1,1 @@
-{"feature_cols": ["B365H", "B365D", "B365A", "BWH", "BWD", "BWA", "WHH", "WHD", "WHA", "HS", "AS", "HST", "AST", "HC", "AC"], "models": ["outcome", "total", "both_scored", "handicap"], "training_date": "2026-07-07T09:11:37.036190"}
+{"feature_cols": ["B365H", "B365D", "B365A", "BWH", "BWD", "BWA", "WHH", "WHD", "WHA", "HS", "AS", "HST", "AST", "HC", "AC"], "models": ["outcome", "total", "both_scored", "handicap"], "training_date": "2026-07-07T09:16:34.558965"}
