@@ -152,6 +152,27 @@ class TelegramPublisher:
         if extra_text:
             extra_text = "\n" + extra_text + "\n"
 
+        # Value bet метки
+        value_badge = ""
+        if isinstance(prediction, dict):
+            outcome_data = prediction.get("outcome", {})
+            total_data = prediction.get("total", {})
+            both_data = prediction.get("both_scored", {})
+            handicap_data = prediction.get("handicap", {})
+            
+            value_parts = []
+            if outcome_data.get("is_value_bet"):
+                value_parts.append(f"💎 Исход {outcome_data.get('value', 0):+.1%}")
+            if total_data.get("is_value_bet"):
+                value_parts.append(f"⚽ Тотал {total_data.get('value', 0):+.1%}")
+            if both_data.get("is_value_bet"):
+                value_parts.append(f"🥅 ОЗ {both_data.get('value', 0):+.1%}")
+            if handicap_data.get("is_value_bet"):
+                value_parts.append(f"📊 Фора {handicap_data.get('value', 0):+.1%}")
+            
+            if value_parts:
+                value_badge = "\n🔥 " + " | ".join(value_parts) + "\n"
+
         text = (
             f"{vip_badge}{sport} | {league}\n\n"
             f"🏟 **{home}** vs **{away}**\n"
@@ -159,7 +180,8 @@ class TelegramPublisher:
             f"🎯 **Прогноз:** {pred}\n"
             f"📊 Уверенность: {conf:.0%}\n"
             f"💰 Коэффициент: {odds:.2f}"
-            f"{extra_text}\n"
+                        f"{extra_text}"
+            f"{value_badge}"
             f"━━━━━━━━━━━━━━━━━━━━━\n🤖 _SportPredict AI_"
         )
 
@@ -184,3 +206,4 @@ class TelegramPublisher:
     async def close(self):
         if self.bot:
             await self.bot.session.close()
+

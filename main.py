@@ -149,13 +149,29 @@ async def run_pipeline():
             if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
                 continue
                 
+                        # Получаем коэффициенты матча из API-Football
+            match_odds = {}
+            try:
+                fixture_id = m["fixture"]["id"]
+                match_odds = await parser.get_match_odds(fixture_id)
+                logger.debug(f"📊 Коэффициенты для {home_team} vs {away_team}: {match_odds}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось получить коэффициенты: {e}")
+
             # 🧵 ОПТИМИЗАЦИЯ: Обучение/расчет ML-модели выносим в отдельный поток
+            # Используем predict_with_value если доступен
+            predict_method = getattr(ml_model, 'predict_with_value', ml_model.predict)
+            
             ml_result = await asyncio.to_thread(
-                ml_model.predict,
+                predict_method,
                 home_team=home_team,
                 away_team=away_team,
                 match_date=match_date,
-                historical_df=historical_df
+                historical_df=historical_df,
+                odds=match_odds,
+                B365H=match_odds.get('home', 0),
+                B365D=match_odds.get('draw', 0),
+                B365A=match_odds.get('away', 0),
             )
 
             # 🔄 Multi-output обработка
@@ -187,11 +203,23 @@ async def run_pipeline():
                 "odds_url": m.get("odds_url") or f"https://www.google.com/search?q={home_team}+{away_team}+betting+odds"
             }
 
+            # Дополнительные рынки из multi-output
+            total_pred = ""
+            both_scored_pred = ""
+            handicap_pred = ""
+            if isinstance(ml_result, dict) and 'outcome' in ml_result:
+                total_pred = ml_result.get('total', {}).get('prediction', '')
+                both_scored_pred = ml_result.get('both_scored', {}).get('prediction', '')
+                handicap_pred = ml_result.get('handicap', {}).get('prediction', '')
+
             pred = {
                 "prediction": predicted_outcome,
                 "confidence": confidence,
                 "odds_est": m.get("odds", 2.0),
-                "match": match_data
+                "match": match_data,
+                "total": total_pred,
+                "both_scored": both_scored_pred,
+                "handicap": handicap_pred,
             }
 
             # Категоризация по уровню уверенности
@@ -602,3 +630,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
