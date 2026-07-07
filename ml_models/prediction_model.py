@@ -26,7 +26,9 @@ class PredictionModel:
                 logger.info(f"✅ AdvancedModel загружена: {self.accuracy:.2%}")
                 return
         except Exception as e:
-            logger.debug(f"AdvancedModel не доступна: {e}")
+            logger.error(f"❌ Ошибка загрузки AdvancedModel: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         
         # Fallback на старую модель
         try:
