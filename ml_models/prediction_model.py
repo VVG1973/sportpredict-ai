@@ -18,12 +18,15 @@ class PredictionModel:
         
         # Пробуем загрузить advanced модель
         try:
-            from ml_models.advanced_model import AdvancedPredictionModel
+        from ml_models.advanced_model import AdvancedPredictionModel
             self.model = AdvancedPredictionModel()
             if self.model.is_loaded:
                 self.is_trained = True
                 self.accuracy = self.model.accuracy
-                logger.info(f"✅ AdvancedModel загружена: {self.accuracy:.2%}")
+                # accuracy теперь словарь {outcome: 0.61, total: 0.69, ...}
+                avg_acc = sum(self.accuracy.values()) / len(self.accuracy) if self.accuracy else 0
+                logger.info(f"✅ AdvancedModel загружена: средняя точность {avg_acc:.2%}")
+                logger.info(f"📊 Точности по рынкам: {self.accuracy}")
                 return
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки AdvancedModel: {e}")
