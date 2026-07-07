@@ -632,23 +632,6 @@ async def main():
     
     try:
     
-    @dp.message(Command("run"))
-    async def cmd_run(message: types.Message):
-        if message.from_user.id != settings.ADMIN_ID:
-            await message.answer("❌ Только для администратора")
-            return
-        await message.answer("🚀 Запускаю пайплайн...")
-        try:
-            count = await run_pipeline()
-            await message.answer(f"✅ Пайплайн завершен. Опубликовано: {count}")
-        except Exception as e:
-            await message.answer(f"❌ Ошибка: {e}")
-
-    await dp.start_polling(publisher.bot)
-    finally:
-        await publisher.close()
-
-
 if __name__ == "__main__":
     asyncio.run(main())
 
