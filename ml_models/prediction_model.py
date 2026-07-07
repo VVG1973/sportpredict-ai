@@ -18,15 +18,18 @@ class PredictionModel:
         
         # Пробуем загрузить advanced модель
         try:
-        from ml_models.advanced_model import AdvancedPredictionModel
+            from ml_models.advanced_model import AdvancedPredictionModel
             self.model = AdvancedPredictionModel()
             if self.model.is_loaded:
                 self.is_trained = True
                 self.accuracy = self.model.accuracy
                 # accuracy теперь словарь {outcome: 0.61, total: 0.69, ...}
-                avg_acc = sum(self.accuracy.values()) / len(self.accuracy) if self.accuracy else 0
-                logger.info(f"✅ AdvancedModel загружена: средняя точность {avg_acc:.2%}")
-                logger.info(f"📊 Точности по рынкам: {self.accuracy}")
+                if isinstance(self.accuracy, dict) and self.accuracy:
+                    avg_acc = sum(self.accuracy.values()) / len(self.accuracy)
+                    logger.info(f"✅ AdvancedModel загружена: средняя точность {avg_acc:.2%}")
+                    logger.info(f"📊 Точности по рынкам: {self.accuracy}")
+                else:
+                    logger.info(f"✅ AdvancedModel загружена: {self.accuracy}")
                 return
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки AdvancedModel: {e}")
@@ -58,11 +61,21 @@ class PredictionModel:
         
         # Используем advanced модель если есть
         if self.model and hasattr(self.model, 'predict'):
-            return self.model.predict(match_data)
+            result = self.model.predict(match_data)
+            # Преобразуем multi-output в старый формат для совместимости
+            if isinstance(result, dict) and 'outcome' in result:
+                outcome = result['outcome']
+                return {
+                    "prediction": outcome['prediction'],
+                    "confidence": outcome['confidence'],
+                    "probabilities": outcome.get('probabilities', {}),
+                    "markets": result  # все рынки
+                }
+            return result
         
         # Fallback на простой прогноз по коэффициентам
-        odds_home = match_data.get('odds_home', 0) or match_data.get('b365_home', 0)
-        odds_away = match_data.get('odds_away', 0) or match_data.get('b365_away', 0)
+        odds_home = match_data.get('odds_home', 0) or match_data.get('B365H', 0)
+        odds_away = match_data.get('odds_away', 0) or match_data.get('B365A', 0)
         
         if odds_home and odds_away:
             if odds_home < odds_away:
@@ -79,4 +92,6 @@ class PredictionModel:
         return result
 
     def get_accuracy(self) -> float:
+        if isinstance(self.accuracy, dict):
+            return sum(self.accuracy.values()) / len(self.accuracy) if self.accuracy else 0
         return self.accuracy
