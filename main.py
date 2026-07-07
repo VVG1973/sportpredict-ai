@@ -632,8 +632,9 @@ async def main():
     
     try:
     
-if __name__ == "__main__":
+    except Exception as e:\n        logger.error(f"Ошибка в main: {e}")\n\nif __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
