@@ -27,6 +27,7 @@ from telegram_bot.event_publisher import TelegramPublisher
 from database.db import Database
 from analyzers.result_checker import ResultChecker
 from telegram_bot.admin_handlers import admin_router
+from telegram_bot.favorites import router as favorites_router
 from telegram_bot.vip_manager import VIPManager, CryptoBotService, SubscriptionManager, SinglePurchaseService
 
 # ╨У╨╗╨╛╨▒╨░╨╗╤М╨╜╤Л╨╣ ╨╖╨░╨╝╨╛╨║ ╨╛╤В ╨╛╨┤╨╜╨╛╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╤Е ╨╖╨░╨┐╤Г╤Б╨║╨╛╨▓ ╨┐╨░╨╣╨┐╨╗╨░╨╣╨╜╨░
@@ -586,6 +587,7 @@ async def main():
     publisher = TelegramPublisher()
     dp = Dispatcher()
     dp.include_router(admin_router)
+    dp.include_router(favorites_router)
 
     try:
         await publisher.bot.delete_webhook(drop_pending_updates=True)
