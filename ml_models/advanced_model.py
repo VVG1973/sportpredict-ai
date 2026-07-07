@@ -22,11 +22,10 @@ class AdvancedPredictionModel:
 
     def _load_model(self):
         """Загружает XGBoost модели из JSON-файлов"""
-        # Пробуем несколько путей (Railway Volume → локально)
         possible_paths = [
-            Path("/app/data/ml_models/xgboost_models.meta.json"),  # Railway Volume
-            Path("ml_models/xgboost_models.meta.json"),              # Локально
-            Path("/app/ml_models/xgboost_models.meta.json"),       # Railway локально
+            Path("/app/data/ml_models/xgboost_models.meta.json"),
+            Path("ml_models/xgboost_models.meta.json"),
+            Path("/app/ml_models/xgboost_models.meta.json"),
         ]
 
         meta_path = None
@@ -42,8 +41,9 @@ class AdvancedPredictionModel:
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-            self.accuracy = meta.get("accuracy", {})  
+
             self.feature_cols = meta.get("feature_cols", [])
+            self.accuracy = meta.get("accuracy", {})
             model_dir = meta_path.parent
 
             for name in meta.get("models", []):
@@ -77,11 +77,11 @@ class AdvancedPredictionModel:
                 value = match_data.get(col.upper(), 0)
             # Пробуем альтернативные имена
             if value == 0 and col == "B365H":
-                value = match_data.get("odds_home", 0)
+                value = match_data.get("odds_home", 0) or match_data.get("BWH", 0)
             if value == 0 and col == "B365D":
-                value = match_data.get("odds_draw", 0)
+                value = match_data.get("odds_draw", 0) or match_data.get("BWD", 0)
             if value == 0 and col == "B365A":
-                value = match_data.get("odds_away", 0)
+                value = match_data.get("odds_away", 0) or match_data.get("BWA", 0)
             try:
                 features.append(float(value))
             except (ValueError, TypeError):
@@ -191,24 +191,128 @@ class AdvancedPredictionModel:
             }
         }
 
-    def predict_with_value(self, match_data: Dict, min_odds: float = 1.5) -> Optional[Dict]:
-        """Прогноз с value bet анализом"""
+    def predict_with_value(self, match_data: Dict) -> Dict:
+        """Прогноз с value bet анализом для всех рынков"""
         predictions = self.predict(match_data)
+        
+        # Получаем коэффициенты — пробуем разные форматы
+        odds = match_data.get('odds', {})
+        if not odds:
+            odds = {
+                'home': match_data.get('odds_home', 0) or match_data.get('B365H', 0),
+                'draw': match_data.get('odds_draw', 0) or match_data.get('B365D', 0),
+                'away': match_data.get('odds_away', 0) or match_data.get('B365A', 0),
+                'over_2_5': match_data.get('odds_over_2_5', 0),
+                'under_2_5': match_data.get('odds_under_2_5', 0),
+                'both_yes': match_data.get('odds_both_yes', 0),
+                'both_no': match_data.get('odds_both_no', 0),
+                'handicap_home': match_data.get('odds_handicap_home', 0),
+                'handicap_away': match_data.get('odds_handicap_away', 0),
+            }
 
-        # Анализируем value для исхода
+        # === Value для ИСХОДА ===
         outcome = predictions.get('outcome', {})
-        odds_home = match_data.get('odds_home', 0) or match_data.get('B365H', 0)
-        odds_draw = match_data.get('odds_draw', 0) or match_data.get('B365D', 0)
-        odds_away = match_data.get('odds_away', 0) or match_data.get('B365A', 0)
-
+        odds_home = float(odds.get('home', 0)) or float(match_data.get('B365H', 0))
+        odds_draw = float(odds.get('draw', 0)) or float(match_data.get('B365D', 0))
+        odds_away = float(odds.get('away', 0)) or float(match_data.get('B365A', 0))
+        
         odds_map = {"H": odds_home, "D": odds_draw, "A": odds_away}
         current_odds = odds_map.get(outcome.get('prediction', 'H'), 0)
-
-        if current_odds > 0:
+        
+        if current_odds and current_odds > 0:
             implied_prob = 1.0 / current_odds
             our_prob = outcome.get('confidence', 0)
             value = our_prob - implied_prob
-            outcome['value'] = value
+            outcome['value'] = round(value, 4)
             outcome['is_value_bet'] = value > 0.05
+            outcome['odds'] = round(current_odds, 2)
+            logger.info(f"💎 Value исхода: {outcome['prediction']} | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+
+        # === Value для ТОТАЛА ===
+        total = predictions.get('total', {})
+        over_odds = float(odds.get('over_2_5', 0))
+        under_odds = float(odds.get('under_2_5', 0))
+        
+        if total.get('prediction') == "ТБ 2.5" and over_odds > 0:
+            implied_prob = 1.0 / over_odds
+            our_prob = total.get('confidence', 0)
+            value = our_prob - implied_prob
+            total['value'] = round(value, 4)
+            total['is_value_bet'] = value > 0.05
+            total['odds'] = round(over_odds, 2)
+            logger.info(f"💎 Value тотала: ТБ 2.5 | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+        elif total.get('prediction') == "ТМ 2.5" and under_odds > 0:
+            implied_prob = 1.0 / under_odds
+            our_prob = total.get('confidence', 0)
+            value = our_prob - implied_prob
+            total['value'] = round(value, 4)
+            total['is_value_bet'] = value > 0.05
+            total['odds'] = round(under_odds, 2)
+            logger.info(f"💎 Value тотала: ТМ 2.5 | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+
+        # === Value для ОБЕ ЗАБЬЮТ ===
+        both = predictions.get('both_scored', {})
+        yes_odds = float(odds.get('both_yes', 0))
+        no_odds = float(odds.get('both_no', 0))
+        
+        if both.get('prediction') == "Да" and yes_odds > 0:
+            implied_prob = 1.0 / yes_odds
+            our_prob = both.get('confidence', 0)
+            value = our_prob - implied_prob
+            both['value'] = round(value, 4)
+            both['is_value_bet'] = value > 0.05
+            both['odds'] = round(yes_odds, 2)
+            logger.info(f"💎 Value ОЗ: Да | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+        elif both.get('prediction') == "Нет" and no_odds > 0:
+            implied_prob = 1.0 / no_odds
+            our_prob = both.get('confidence', 0)
+            value = our_prob - implied_prob
+            both['value'] = round(value, 4)
+            both['is_value_bet'] = value > 0.05
+            both['odds'] = round(no_odds, 2)
+            logger.info(f"💎 Value ОЗ: Нет | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+
+        # === Value для ФОРЫ ===
+        handicap = predictions.get('handicap', {})
+        home_handicap_odds = float(odds.get('handicap_home', 0))
+        away_handicap_odds = float(odds.get('handicap_away', 0))
+        
+        if handicap.get('prediction', '').startswith('Ф1') and home_handicap_odds > 0:
+            implied_prob = 1.0 / home_handicap_odds
+            our_prob = handicap.get('confidence', 0)
+            value = our_prob - implied_prob
+            handicap['value'] = round(value, 4)
+            handicap['is_value_bet'] = value > 0.05
+            handicap['odds'] = round(home_handicap_odds, 2)
+            logger.info(f"💎 Value фора: Ф1 | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+        elif handicap.get('prediction', '').startswith('Ф2') and away_handicap_odds > 0:
+            implied_prob = 1.0 / away_handicap_odds
+            our_prob = handicap.get('confidence', 0)
+            value = our_prob - implied_prob
+            handicap['value'] = round(value, 4)
+            handicap['is_value_bet'] = value > 0.05
+            handicap['odds'] = round(away_handicap_odds, 2)
+            logger.info(f"💎 Value фора: Ф2 | our={our_prob:.2%} | implied={implied_prob:.2%} | value={value:+.2%}")
+
+        # Считаем общий value score
+        all_values = [
+            outcome.get('value', 0),
+            total.get('value', 0),
+            both.get('value', 0),
+            handicap.get('value', 0)
+        ]
+        predictions['max_value'] = round(max(all_values), 4)
+        predictions['avg_value'] = round(sum(all_values) / len(all_values), 4) if all_values else 0
+        predictions['has_value_bet'] = any(v > 0.05 for v in all_values)
+        
+        # Собираем список value-рынков для публикации
+        value_markets = []
+        if outcome.get('is_value_bet'): value_markets.append('Исход')
+        if total.get('is_value_bet'): value_markets.append('Тотал')
+        if both.get('is_value_bet'): value_markets.append('ОЗ')
+        if handicap.get('is_value_bet'): value_markets.append('Фора')
+        predictions['value_markets'] = value_markets
+
+        logger.info(f"📊 Value summary: max={predictions['max_value']:+.2%}, avg={predictions['avg_value']:+.2%}, value_bets={len(value_markets)}")
 
         return predictions
