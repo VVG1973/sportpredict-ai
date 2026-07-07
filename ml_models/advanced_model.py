@@ -16,7 +16,7 @@ class AdvancedPredictionModel:
     def __init__(self, model_dir: str = "ml_models"):
         self.models = {}
         self.feature_cols = []
-        self.accuracy = meta.get("accuracy", {})
+        self.accuracy = {}
         self.is_loaded = False
         self._load_model()
 
@@ -42,7 +42,7 @@ class AdvancedPredictionModel:
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-
+            self.accuracy = meta.get("accuracy", {})  
             self.feature_cols = meta.get("feature_cols", [])
             model_dir = meta_path.parent
 
