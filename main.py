@@ -31,10 +31,14 @@ from telegram_bot.favorites import router as favorites_router
 from telegram_bot.handlers import router as handlers_router
 from telegram_bot.vip_manager import VIPManager, CryptoBotService, SubscriptionManager, SinglePurchaseService
 
-# ╨У╨╗╨╛╨▒╨░╨╗╤М╨╜╤Л╨╣ ╨╖╨░╨╝╨╛╨║ ╨╛╤В ╨╛╨┤╨╜╨╛╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╤Е ╨╖╨░╨┐╤Г╤Б╨║╨╛╨▓ ╨┐╨░╨╣╨┐╨╗╨░╨╣╨╜╨░
 is_pipeline_running = False
 
-logger.info("тП│ ╨Ш╨╜╨╕╤Ж╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╤П ML-╨╝╨╛╨┤╨╡╨╗╨╕ ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜╨░")
+# Shared instances для scheduler jobs (создаются один раз)
+_shared_publisher = None
+_shared_crypto_service = None
+_shared_manager = None
+
+logger.info("Инициализация ML-модели завершена")
 
 
 async def create_and_publish_express(candidates, count, price, manager, publisher, express_label):
@@ -449,19 +453,25 @@ async def send_stats_report():
 
 
 async def check_crypto_payments():
-    """╨Я╤А╨╛╨▓╨╡╤А╨║╨░ ╨╛╨┐╨╗╨░╤В CryptoBot ╨║╨░╨╢╨┤╤Л╨╡ 30 ╤Б╨╡╨║╤Г╨╜╨┤"""
-    publisher = None
-    service = None
-    manager = None
-    
+    """Проверка оплат CryptoBot каждые 30 секунд"""
+    global _shared_publisher, _shared_crypto_service, _shared_manager
+
     try:
-        publisher = TelegramPublisher()
-        service = CryptoBotService()
-        manager = SubscriptionManager()
+        # Инициализируем shared-экземпляры один раз
+        if _shared_publisher is None:
+            _shared_publisher = TelegramPublisher()
+        if _shared_crypto_service is None:
+            _shared_crypto_service = CryptoBotService()
+        if _shared_manager is None:
+            _shared_manager = SubscriptionManager()
+            await _shared_manager.init()
+
+        publisher = _shared_publisher
+        service = _shared_crypto_service
+        manager = _shared_manager
         vip_manager = VIPManager(publisher.bot)
         purchase_service = SinglePurchaseService(service)
 
-        await manager.init()
         pending = await manager.get_pending_invoices()
         if not pending:
             return
@@ -535,13 +545,8 @@ async def check_crypto_payments():
                 logger.error(f"тЭМ ╨Ю╤И╨╕╨▒╨║╨░ ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨╕ ╨║╨╛╨╜╨║╤А╨╡╤В╨╜╨╛╨│╨╛ ╨╕╨╜╨▓╨╛╨╣╤Б╨░ #{inv.get('invoice_id')}: {invoice_error}")
                 
     except Exception as e:
-        logger.error(f"тЭМ ╨б╨╕╤Б╤В╨╡╨╝╨╜╨░╤П ╨╛╤И╨╕╨▒╨║╨░ ╨▓ check_crypto_payments: {e}")
-    finally:
-        # ╨У╨░╤А╨░╨╜╤В╨╕╤А╨╛╨▓╨░╨╜╨╜╨╛╨╡ ╨╖╨░╨║╤А╤Л╤В╨╕╨╡ ╤Б╨╡╤Б╤Б╨╕╨╣
-        if publisher:
-            await publisher.close()
-        if service:
-            await service.close()
+        logger.error(f"Системная ошибка в check_crypto_payments: {e}")
+    # Не закрываем shared-экземпляры — они используются повторно
 
 
 async def main():
