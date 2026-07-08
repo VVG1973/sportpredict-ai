@@ -677,6 +677,46 @@ async def process_vip_callback(callback: CallbackQuery):
         )
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка создания инвойса: {e}")
-    
+
+    await service.close()
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("buy_express:"))
+async def process_buy_express(callback: CallbackQuery):
+    """Покупка экспресса"""
+    from telegram_bot.vip_manager import CryptoBotService, SubscriptionManager
+
+    events_count = int(callback.data.split(":")[1])
+    price = 199 if events_count <= 2 else 299
+    user_id = callback.from_user.id
+    username = callback.from_user.username or "unknown"
+
+    service = CryptoBotService()
+    manager = SubscriptionManager()
+    await manager.init()
+
+    try:
+        invoice = await service.create_invoice(amount=price, description=f"Экспрес x{events_count}")
+
+        await manager.save_invoice(
+            invoice_id=invoice["invoice_id"],
+            user_id=user_id,
+            username=username,
+            plan=f"express_{events_count}",
+            amount=price
+        )
+
+        await callback.message.answer(
+            f"💳 <b>Оплата экспресса x{events_count}</b>\n\n"
+            f"💰 Сумма: {price} ₽\n\n"
+            f"🔗 <a href='{invoice['pay_url']}'>👉 ОПЛАТИТЬ</a>\n\n"
+            f"⏳ После оплаты экспресс с исходами придёт автоматически.",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка: {e}")
+
     await service.close()
     await callback.answer()
