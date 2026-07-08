@@ -1,7 +1,8 @@
 """
 Публикатор прогнозов в Telegram каналы
-- Обычный канал: 1-2 лучших прогноза (с исходом) + экспрессы
-- VIP канал: 5-6 прогнозов БЕЗ исхода (замаскированы) + призыв купить
+- Обычный канал: 1-2 топ-прогноза (исход + другие рынки) + кнопка купить за 50₽
+- VIP канал: 5-6 прогнозов БЕЗ исхода + другие рынки скрыты + призыв купить
+- Экспрессы: в оба канала (199₽ двойник, 299₽ тройник)
 - Все посты с кнопками букмекеров
 """
 import logging
@@ -13,6 +14,13 @@ from aiogram.client.default import DefaultBotProperties
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_SPORTS = [
+    "футбол", "football", "soccer",
+    "хоккей", "hockey", "nhl", "кхл",
+    "теннис", "tennis", "atp", "wta",
+    "cs", "dota", "lol", "valorant", "кибер", "esport",
+]
 
 
 def to_russian_name(name: str) -> str:
@@ -64,9 +72,7 @@ class RateLimiter:
 
 
 def create_bookmakers_keyboard() -> "InlineKeyboardMarkup":
-    """Клавиатура с 6 российскими букмекерами"""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
     bookmakers = [
         ("Лига Ставок", "https://www.ligastavok.ru"),
         ("Фонбет", "https://www.fonbet.ru"),
@@ -75,7 +81,6 @@ def create_bookmakers_keyboard() -> "InlineKeyboardMarkup":
         ("Винлайн", "https://www.winline.ru"),
         ("Марафон", "https://www.marathonbet.ru"),
     ]
-
     buttons = []
     for i in range(0, len(bookmakers), 2):
         row = []
@@ -84,17 +89,49 @@ def create_bookmakers_keyboard() -> "InlineKeyboardMarkup":
                 name, url = bookmakers[i + j]
                 row.append(InlineKeyboardButton(text=name, url=url))
         buttons.append(row)
-
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def _create_buy_vip_keyboard() -> "InlineKeyboardMarkup":
-    """Клавиатура с призывом купить VIP"""
+def _create_buy_single_keyboard(fixture_id: str = "") -> "InlineKeyboardMarkup":
+    """Кнопка купить один прогноз за 50₽"""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👑 Купить VIP-прогноз — 50₽", callback_data="buy_single")],
-        [InlineKeyboardButton(text="📅 VIP-подписка — от 99₽/день", callback_data="vip_menu")],
+        [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
     ])
+
+
+def _create_buy_vip_keyboard() -> "InlineKeyboardMarkup":
+    """Кнопки VIP: купить один + подписка"""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data="buy_single")],
+        [InlineKeyboardButton(text="👑 VIP-подписка — от 99₽/день", callback_data="vip_menu")],
+    ])
+
+
+def _format_markets(prediction: dict) -> str:
+    """Форматирует дополнительные рынки (тотал, форы, обе забьют)"""
+    lines = []
+    total = prediction.get("total", {})
+    both = prediction.get("both_scored", {})
+    handicap = prediction.get("handicap", {})
+
+    if isinstance(total, dict) and total.get("prediction"):
+        lines.append(f"⚽ Тотал: <b>{total['prediction']}</b>")
+    elif isinstance(total, str) and total:
+        lines.append(f"⚽ Тотал: <b>{total}</b>")
+
+    if isinstance(both, dict) and both.get("prediction"):
+        lines.append(f"🥅 Обе забьют: <b>{both['prediction']}</b>")
+    elif isinstance(both, str) and both:
+        lines.append(f"🥅 Обе забьют: <b>{both}</b>")
+
+    if isinstance(handicap, dict) and handicap.get("prediction"):
+        lines.append(f"📊 Фора: <b>{handicap['prediction']}</b>")
+    elif isinstance(handicap, str) and handicap:
+        lines.append(f"📊 Фора: <b>{handicap}</b>")
+
+    return "\n".join(lines)
 
 
 class TelegramPublisher:
@@ -131,8 +168,10 @@ class TelegramPublisher:
         self._recently_published_set.add(match_key)
         return False
 
+    def _is_supported(self, sport: str) -> bool:
+        return any(s in sport.lower() for s in SUPPORTED_SPORTS)
+
     def _get_match_fields(self, prediction: dict):
-        """Извлекает общие поля матча"""
         match = prediction.get("match", {})
         sport = match.get("sport", "⚽ Футбол")
         home = to_russian_name(match.get("home_team", "Команда 1"))
@@ -142,37 +181,35 @@ class TelegramPublisher:
         conf = prediction.get("confidence", 0.5)
         odds = prediction.get("odds_est", 2.0)
         league = match.get("league", "")
-        return match, sport, home, away, pred, date_ru, conf, odds, league
+        fixture_id = match.get("fixture_id", "")
+        return match, sport, home, away, pred, date_ru, conf, odds, league, fixture_id
 
     async def _send(self, chat_id: str, text: str, keyboard=None):
-        """Отправка с rate limiting"""
         await self._rate_limiter.acquire()
         await self.bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode="HTML",
-            reply_markup=keyboard,
-            disable_web_page_preview=True
+            chat_id=chat_id, text=text, parse_mode="HTML",
+            reply_markup=keyboard, disable_web_page_preview=True
         )
 
     # ═══════════════════════════════════════════════════════
-    # ОБЫЧНЫЙ КАНАЛ: 1-2 лучших прогноза С исходом
+    # ОБЫЧНЫЙ КАНАЛ: 1-2 топ-прогноза С исходом + другие рынки
+    # + кнопка "Купить прогноз за 50₽"
     # ═══════════════════════════════════════════════════════
     async def publish_to_channel(self, prediction: dict) -> bool:
-        """Публикует прогноз в обычный канал (с исходом и кнопками букмекеров)"""
         if not self.bot or not self.channel_id:
             return False
 
-        match, sport, home, away, pred, date_ru, conf, odds, league = self._get_match_fields(prediction)
+        match, sport, home, away, pred, date_ru, conf, odds, league, fixture_id = self._get_match_fields(prediction)
 
-        supported = ["футбол", "football", "soccer", "cs", "dota", "lol", "valorant", "кибер", "esport"]
-        if not any(s in sport.lower() for s in supported):
+        if not self._is_supported(sport):
             return False
-
         if self._is_duplicate(home, away, date_ru):
             return False
 
-        # Value bet метка
+        markets_text = _format_markets(prediction)
+        if markets_text:
+            markets_text = "\n" + markets_text + "\n"
+
         value_badge = ""
         outcome_data = prediction.get("outcome", {})
         if outcome_data.get("is_value_bet"):
@@ -186,13 +223,22 @@ class TelegramPublisher:
             f"🔮 <b>Исход:</b> <b>{pred}</b>\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
             f"💰 Коэффициент: <b>{odds:.2f}</b>"
+            f"{markets_text}"
             f"{value_badge}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎰 <b>Ставь у букмекера:</b>"
+            f"🔐 <i>Остальные рынки скрыты</i>\n"
+            f"💰 <b>Купить полный прогноз — 50₽</b>"
         )
 
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
+        ])
+        # Добавляем кнопки букмекеров
+        for row in create_bookmakers_keyboard().inline_keyboard:
+            keyboard.inline_keyboard.append(row)
+
         try:
-            await self._send(self.channel_id, text, create_bookmakers_keyboard())
+            await self._send(self.channel_id, text, keyboard)
             logger.info(f"📢 Канал: {home} vs {away} — {pred}")
             return True
         except Exception as e:
@@ -200,32 +246,48 @@ class TelegramPublisher:
             return False
 
     # ═══════════════════════════════════════════════════════
-    # VIP КАНАЛ: 5-6 прогнозов БЕЗ исхода (замаскированы)
+    # VIP КАНАЛ: 5-6 прогнозов БЕЗ исхода + другие рынки
+    # + призыв купить VIP или за 50₽
     # ═══════════════════════════════════════════════════════
     async def publish_to_vip(self, prediction: dict) -> bool:
-        """Публикует замаскированный прогноз в VIP-канал (без исхода, с призывом купить)"""
         if not self.bot or not self.vip_channel_id:
             return False
 
-        match, sport, home, away, pred, date_ru, conf, odds, league = self._get_match_fields(prediction)
+        match, sport, home, away, pred, date_ru, conf, odds, league, fixture_id = self._get_match_fields(prediction)
 
-        supported = ["футбол", "football", "soccer", "cs", "dota", "lol", "valorant", "кибер", "esport"]
-        if not any(s in sport.lower() for s in supported):
+        if not self._is_supported(sport):
             return False
-
         if self._is_duplicate(home, away, date_ru):
             return False
+
+        # Показываем рынки как "скрытые"
+        total = prediction.get("total", {})
+        both = prediction.get("both_scored", {})
+        handicap = prediction.get("handicap", {})
+
+        extra_hidden = []
+        if isinstance(total, dict) and total.get("prediction"):
+            extra_hidden.append("⚽ Тотал: ❓")
+        if isinstance(both, dict) and both.get("prediction"):
+            extra_hidden.append("🥅 Обе забьют: ❓")
+        if isinstance(handicap, dict) and handicap.get("prediction"):
+            extra_hidden.append("📊 Фора: ❓")
+
+        extra_text = ""
+        if extra_hidden:
+            extra_text = "\n" + "\n".join(extra_hidden) + "\n"
 
         text = (
             f"🔒 <b>VIP-ПРОГНОЗ</b>\n\n"
             f"{sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🎯 <b>Исход:</b> ❓❓❓\n"
+            f"🔮 <b>Исход:</b> ❓❓❓\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
-            f"💰 Коэффициент: <b>{odds:.2f}</b>\n\n"
+            f"💰 Коэффициент: <b>{odds:.2f}</b>"
+            f"{extra_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔐 <i>Прогноз скрыт. Купите доступ!</i>"
+            f"🔐 <i>Все рынки скрыты. Купите доступ!</i>"
         )
 
         try:
@@ -237,10 +299,9 @@ class TelegramPublisher:
             return False
 
     # ═══════════════════════════════════════════════════════
-    # ЭКСПРЕСС: в ОБА канала одновременно
+    # ЭКСПРЕСС: в ОБА канала (199₽ двойник, 299₽ тройник)
     # ═══════════════════════════════════════════════════════
     async def publish_express_to_both(self, express_events: list, total_odds: float, label: str) -> bool:
-        """Публикует экспресс в оба канала"""
         if not self.bot:
             return False
 
@@ -271,7 +332,6 @@ class TelegramPublisher:
         keyboard = create_bookmakers_keyboard()
         sent = False
 
-        # В обычный канал
         if self.channel_id:
             try:
                 await self._send(self.channel_id, text, keyboard)
@@ -279,7 +339,6 @@ class TelegramPublisher:
             except Exception as e:
                 logger.error(f"❌ Ошибка экспресса в канал: {e}")
 
-        # В VIP канал
         if self.vip_channel_id:
             try:
                 await self._send(self.vip_channel_id, text, keyboard)
@@ -288,18 +347,20 @@ class TelegramPublisher:
                 logger.error(f"❌ Ошибка экспресса в VIP: {e}")
 
         if sent:
-            logger.info(f"🔥 Экспресс опубликован в оба канала: {label}")
+            logger.info(f"🔥 Экспресс: {label}")
         return sent
 
     # ═══════════════════════════════════════════════════════
     # РАСКРЫТИЕ ПРОГНОЗА (после оплаты)
     # ═══════════════════════════════════════════════════════
     async def publish_revealed(self, chat_id: str, prediction: dict) -> bool:
-        """Отправляет раскрытый прогноз конкретному пользователю"""
         if not self.bot:
             return False
 
-        match, sport, home, away, pred, date_ru, conf, odds, league = self._get_match_fields(prediction)
+        match, sport, home, away, pred, date_ru, conf, odds, league, _ = self._get_match_fields(prediction)
+        markets_text = _format_markets(prediction)
+        if markets_text:
+            markets_text = "\n" + markets_text + "\n"
 
         text = (
             f"✅ <b>ПРОГНОЗ РАСКРЫТ!</b>\n\n"
@@ -308,7 +369,8 @@ class TelegramPublisher:
             f"📅 {date_ru}\n\n"
             f"🔮 <b>Исход:</b> <b>{pred}</b>\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
-            f"💰 Коэффициент: <b>{odds:.2f}</b>\n\n"
+            f"💰 Коэффициент: <b>{odds:.2f}</b>"
+            f"{markets_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"🎰 <b>Ставь у букмекера:</b>"
         )

@@ -248,7 +248,10 @@ async def run_pipeline():
                 "prediction": predicted_outcome,
                 "confidence": confidence,
                 "odds_est": m.get("odds", 2.0),
-                "match": match_data
+                "match": match_data,
+                "total": ml_result.get("total", {}),
+                "both_scored": ml_result.get("both_scored", {}),
+                "handicap": ml_result.get("handicap", {}),
             }
 
             # ╨Ъ╨░╤В╨╡╨│╨╛╤А╨╕╨╖╨░╤Ж╨╕╤П ╨┐╨╛ ╤Г╤А╨╛╨▓╨╜╤О ╤Г╨▓╨╡╤А╨╡╨╜╨╜╨╛╤Б╤В╨╕
@@ -312,7 +315,7 @@ async def run_pipeline():
             await publisher.publish_express_to_both(events_data, total_odds_x2, "🔥 ЭКСПРЕСС x2")
             express_published += 1
             published += 1
-            await manager.save_express_group(events_data, total_odds_x2, 149)
+            await manager.save_express_group(events_data, total_odds_x2, 199)
 
         if len(express_candidates) >= 5:
             events_x3 = express_candidates[2:5]
@@ -334,7 +337,7 @@ async def run_pipeline():
             await publisher.publish_express_to_both(events_data_3, total_odds_x3, "🔥 ЭКСПРЕСС x3")
             express_published += 1
             published += 1
-            await manager.save_express_group(events_data_3, total_odds_x3, 199)
+            await manager.save_express_group(events_data_3, total_odds_x3, 299)
 
         logger.info(f"✅ Опубликовано: {published} (обычный: {len(top_predictions)}, VIP: {len(vip_blurred)}, экспрессы: {express_published})")
 
