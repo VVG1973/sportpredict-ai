@@ -54,38 +54,41 @@ async def cmd_menu(message: Message):
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    """Приветствие с показом меню"""
+    """Приветствие с продажей VIP и экспрессов"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="📊 Прогноз на сегодня"),
+                KeyboardButton(text="🔥 Экспрессы дня"),
                 KeyboardButton(text="💎 VIP прогнозы")
             ],
             [
-                KeyboardButton(text="⭐ Избранные команды"),
-                KeyboardButton(text="👥 Пригласить друга")
-            ],
-            [
-                KeyboardButton(text="💳 Купить VIP"),
+                KeyboardButton(text="👑 Купить VIP"),
                 KeyboardButton(text="ℹ️ Помощь")
             ]
         ],
         resize_keyboard=True
     )
-    
+
     text = (
-        f"👋 <b>Привет, {message.from_user.first_name}!</b>\n\n"
-        "Я <b>SportPredict AI</b> — умный бот для прогнозов на спорт!\n\n"
-        "🤖 <b>Что я умею:</b>\n"
-        "✅ Анализ 22,000+ матчей\n"
-        "✅ AI-прогнозы с точностью 45-55%\n"
-        "✅ VIP прогнозы (70%+ уверенность)\n"
-        "✅ Уведомления о любимых командах\n"
-        "✅ Оплата криптой\n\n"
-        "🎁 <b>Бонус:</b> пригласи друга и получи <b>VIP день бесплатно!</b>\n\n"
-        "Используй кнопки ниже или команду /menu"
+        f"👋 <b>{message.from_user.first_name}, добро пожаловать!</b>\n\n"
+        f"🎯 <b>SportPredict AI</b> — AI-прогнозы на спорт\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📊 <b>Что вы получаете бесплатно:</b>\n"
+        f"• 1-2 топ-прогноза в день с исходом\n"
+        f"• Экспрессы x2 и x3 в обоих каналах\n"
+        f"• Кнопки букмекеров для быстрой ставки\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🔒 <b>Что скрыто в VIP-канале:</b>\n"
+        f"• 5-6 эксклюзивных прогнозов в день\n"
+        f"• Исходы скрыты — видны только VIP-подписчикам\n"
+        f"• Точность VIP-прогнозов: <b>70%+</b>\n\n"
+        f"💎 <b>Купить VIP-прогноз:</b> всего <b>50₽</b>\n"
+        f"👑 <b>VIP-подписка:</b> от <b>99₽/день</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎁 <b>Бонус:</b> пригласи друга — получи VIP бесплатно!\n\n"
+        f"⚠️ <i>Прогнозы — инфохарактер. 18+</i>"
     )
-    
+
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
