@@ -1,0 +1,1 @@
+{"feature_cols": ["winrate1", "winrate2", "wins1", "wins2", "form1_wins", "form2_wins", "h2h_winrate", "h2h_count"], "game": "dota2", "accuracy": 0.875, "training_date": "2026-07-08T10:08:14.492262", "samples": 38}

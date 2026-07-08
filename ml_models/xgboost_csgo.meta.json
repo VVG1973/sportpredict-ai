@@ -1,0 +1,1 @@
+{"feature_cols": ["winrate1", "winrate2", "wins1", "wins2", "form1_wins", "form2_wins", "h2h_winrate", "h2h_count"], "game": "csgo", "accuracy": 0.8889, "training_date": "2026-07-08T10:08:14.453033", "samples": 45}
