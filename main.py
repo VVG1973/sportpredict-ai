@@ -234,21 +234,19 @@ async def run_pipeline():
             # ╨Ъ╨░╤В╨╡╨│╨╛╤А╨╕╨╖╨░╤Ж╨╕╤П ╨┐╨╛ ╤Г╤А╨╛╨▓╨╜╤О ╤Г╨▓╨╡╤А╨╡╨╜╨╜╨╛╤Б╤В╨╕
             if pred["confidence"] >= settings.VIP_CONFIDENCE_THRESHOLD:
                 vip_predictions.append(pred)
-            elif pred["confidence"] >= 0.71:
+            elif pred["confidence"] >= 0.65:
                 express_candidates.append(pred)
             else:
                 regular_predictions.append(pred)
 
         published = 0
 
-        # 1я╕ПтГг ╨Я╤Г╨▒╨╗╨╕╨║╨░╤Ж╨╕╤П VIP-╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓
-        for pred in vip_predictions:
-            if await publisher.publish(pred, is_vip=True, is_single_purchase=False):
-                published += 1
-
-        # 2я╕ПтГг ╨Я╤Г╨▒╨╗╨╕╨║╨░╤Ж╨╕╤П ╨╛╨▒╤Л╤З╨╜╤Л╤Е ╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓
-        for pred in regular_predictions:
-            if await publisher.publish(pred, is_vip=False, is_single_purchase=False):
+        # ═══════════════════════════════════════════════════
+        # 1. ОБЫЧНЫЙ КАНАЛ: 1-2 лучших прогноза С исходом
+        # ═══════════════════════════════════════════════════
+        top_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:2]
+        for pred in top_predictions:
+            if await publisher.publish_to_channel(pred):
                 published += 1
                 await db.save_prediction(
                     fixture_id=pred["match"]["fixture_id"],
@@ -260,146 +258,67 @@ async def run_pipeline():
                     odds=pred["odds_est"]
                 )
 
-                # ╨г╨▓╨╡╨┤╨╛╨╝╨╗╨╡╨╜╨╕╤П ╨┐╨╛╨┤╨┐╨╕╤Б╤З╨╕╨║╨░╨╝ ╨╗╤О╨▒╨╕╨╝╤Л╤Е ╨║╨╛╨╝╨░╨╜╨┤
-                try:
-                    home_team = pred["match"]["home_team"]
-                    away_team = pred["match"]["away_team"]
+        # ═══════════════════════════════════════════════════
+        # 2. VIP КАНАЛ: 5-6 прогнозов БЕЗ исхода (замаскированы)
+        # ═══════════════════════════════════════════════════
+        vip_blurred = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:6]
+        for pred in vip_blurred:
+            if await publisher.publish_to_vip(pred):
+                published += 1
 
-                    home_followers = await db.get_team_followers(home_team)
-                    away_followers = await db.get_team_followers(away_team)
-                    all_followers = home_followers + away_followers
-
-                    if all_followers:
-                        sport = pred["match"]["sport"]
-                        league = pred["match"]["league"]
-                        date_ru = pred["match"]["date"][:16].replace("T", " ")
-
-                        personal_text = (
-                            f"тЪб <b>╨Я╤А╨╛╨│╨╜╨╛╨╖ ╨╜╨░ ╨▓╨░╤И╤Г ╨║╨╛╨╝╨░╨╜╨┤╤Г!</b>\n\n"
-                            f"{sport} | <i>{league}</i>\n"
-                            f"ЁЯПЯ <b>{home_team}</b> тАФ <b>{away_team}</b>\n"
-                            f"ЁЯУЕ <i>{date_ru}</i>\n\n"
-                            f"ЁЯОп <b>╨Я╤А╨╛╨│╨╜╨╛╨╖:</b> {pred['prediction']}\n"
-                            f"ЁЯУК <b>╨г╨▓╨╡╤А╨╡╨╜╨╜╨╛╤Б╤В╤М:</b> {pred['confidence']:.0%}\n"
-                            f"ЁЯТ░ <b>╨Ъ╨╛╤Н╤Д:</b> {pred['odds_est']}\n\n"
-                            f"тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n"
-                            f"тЪая╕П <i>╨Ю╤В╨▓╨╡╤В╤Б╤В╨▓╨╡╨╜╨╜╨░╤П ╨╕╨│╤А╨░. 18+</i>"
-                        )
-
-                        sent_count = 0
-                        for user_id, username in all_followers:
-                            try:
-                                await publisher.bot.send_message(
-                                    chat_id=user_id,
-                                    text=personal_text,
-                                    parse_mode="HTML"
-                                )
-                                sent_count += 1
-                                await asyncio.sleep(0.05)
-                            except Exception as e:
-                                logger.debug(f"╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╛╤В╨┐╤А╨░╨▓╨╕╤В╤М {username}: {e}")
-
-                        if sent_count > 0:
-                            logger.info(f"ЁЯУи ╨Ю╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛ ╨╗╨╕╤З╨╜╤Л╤Е ╤Г╨▓╨╡╨┤╨╛╨╝╨╗╨╡╨╜╨╕╨╣: {sent_count} ╨╜╨░ ╨╝╨░╤В╤З {home_team} - {away_team}")
-                except Exception as e:
-                    logger.warning(f"╨Ю╤И╨╕╨▒╨║╨░ ╨╛╤В╨┐╤А╨░╨▓╨║╨╕ ╤Г╨▓╨╡╨┤╨╛╨╝╨╗╨╡╨╜╨╕╨╣ ╨┐╨╛╨┤╨┐╨╕╤Б╤З╨╕╨║╨░╨╝: {e}")
-
-        # 3я╕ПтГг ╨Я╤Г╨▒╨╗╨╕╨║╨░╤Ж╨╕╤П ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б╨╛╨▓
+        # ═══════════════════════════════════════════════════
+        # 3. ЭКСПРЕССЫ: в ОБА канала одновременно
+        # ═══════════════════════════════════════════════════
         express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         express_published = 0
-        admin_express_details = []
 
-        # ╨б╤Ж╨╡╨╜╨░╤А╨╕╨╣ ╨Р: ╨Ъ╨░╨╜╨┤╨╕╨┤╨░╤В╨╛╨▓ ╨╝╨╜╨╛╨│╨╛ (>= 5) -> ╨┤╨╡╨╗╨░╨╡╨╝ ╨╛╨┤╨╕╨╜ ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б ╤Е2 ╨╕ ╨╛╨┤╨╕╨╜ ╤Е3
+        if len(express_candidates) >= 2:
+            events_x2 = express_candidates[:2]
+            events_data = []
+            total_odds_x2 = 1.0
+            for e in events_x2:
+                events_data.append({
+                    "home_team": e["match"]["home_team"],
+                    "away_team": e["match"]["away_team"],
+                    "prediction": e["prediction"],
+                    "confidence": e["confidence"],
+                    "odds": e["odds_est"],
+                    "date": e["match"]["date"],
+                    "sport": e["match"]["sport"],
+                    "league": e["match"]["league"],
+                })
+                total_odds_x2 *= e["odds_est"]
+
+            await publisher.publish_express_to_both(events_data, total_odds_x2, "🔥 ЭКСПРЕСС x2")
+            express_published += 1
+            published += 1
+            await manager.save_express_group(events_data, total_odds_x2, 149)
+
         if len(express_candidates) >= 5:
-            # ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б ╤Е2 (╨▒╨╡╤А╨╡╨╝ ╨┐╨╡╤А╨▓╤Л╨╡ 2 ╨╗╤Г╤З╤И╨╕╤Е ╨║╨░╨╜╨┤╨╕╨┤╨░╤В╨░)
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[:2],
-                count=2,
-                price=149,
-                manager=manager,
-                publisher=publisher,
-                express_label="╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x2"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"ЁЯФе ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x2 (149тВ╜) тАФ ╨║╨╛╤Н╤Д {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 149
+            events_x3 = express_candidates[2:5]
+            events_data_3 = []
+            total_odds_x3 = 1.0
+            for e in events_x3:
+                events_data_3.append({
+                    "home_team": e["match"]["home_team"],
+                    "away_team": e["match"]["away_team"],
+                    "prediction": e["prediction"],
+                    "confidence": e["confidence"],
+                    "odds": e["odds_est"],
+                    "date": e["match"]["date"],
+                    "sport": e["match"]["sport"],
+                    "league": e["match"]["league"],
                 })
+                total_odds_x3 *= e["odds_est"]
 
-            # ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б ╤Е3 (╨▒╨╡╤А╨╡╨╝ ╤Б╨╗╨╡╨┤╤Г╤О╤Й╨╕╤Е 3 ╨║╨░╨╜╨┤╨╕╨┤╨░╤В╨╛╨▓)
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[2:5],
-                count=3,
-                price=199,
-                manager=manager,
-                publisher=publisher,
-                express_label="╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x3"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"ЁЯФе ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x3 (199тВ╜) тАФ ╨║╨╛╤Н╤Д {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 199
-                })
+            await publisher.publish_express_to_both(events_data_3, total_odds_x3, "🔥 ЭКСПРЕСС x3")
+            express_published += 1
+            published += 1
+            await manager.save_express_group(events_data_3, total_odds_x3, 199)
 
-        # ╨б╤Ж╨╡╨╜╨░╤А╨╕╨╣ ╨С: ╨Ъ╨░╨╜╨┤╨╕╨┤╨░╤В╨╛╨▓ ╨╝╨░╨╗╨╛ (╨╛╤В 2 ╨┤╨╛ 4) -> ╨┤╨╡╨╗╨░╨╡╨╝ ╤В╨╛╨╗╤М╨║╨╛ ╨╛╨┤╨╕╨╜ ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б ╤Е2
-        elif len(express_candidates) >= 2:
-            success, events, odds = await create_and_publish_express(
-                candidates=express_candidates[:2],
-                count=2,
-                price=149,
-                manager=manager,
-                publisher=publisher,
-                express_label="╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x2"
-            )
-            if success:
-                express_published += 1
-                published += 1
-                admin_express_details.append({
-                    "title": f"ЁЯФе ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б x2 (149тВ╜) тАФ ╨║╨╛╤Н╤Д {odds:.2f}",
-                    "events": events,
-                    "total_odds": odds,
-                    "price": 149
-                })
-            logger.info(f"тЪая╕П ╨б╨╛╨╖╨┤╨░╨╜ ╤В╨╛╨╗╤М╨║╨╛ 1 ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б. ╨Э╨╡╨┤╨╛╤Б╤В╨░╤В╨╛╤З╨╜╨╛ ╨║╨░╨╜╨┤╨╕╨┤╨░╤В╨╛╨▓ ╨┤╨╗╤П ╨▓╤В╨╛╤А╨╛╨│╨╛: {len(express_candidates)}")
+        logger.info(f"✅ Опубликовано: {published} (обычный: {len(top_predictions)}, VIP: {len(vip_blurred)}, экспрессы: {express_published})")
 
-        # ╨Ю╤В╨┐╤А╨░╨▓╨╗╤П╨╡╨╝ ╨╛╤В╤З╨╡╤В ╨░╨┤╨╝╨╕╨╜╤Г ╨▓ ╨Ы╨б
-        if admin_express_details:
-            try:
-                admin_text = "ЁЯФУ <b>╨Ф╨Х╨в╨Р╨Ы╨Ш ╨б╨д╨Ю╨а╨Ь╨Ш╨а╨Ю╨Т╨Р╨Э╨Э╨л╨е ╨н╨Ъ╨б╨Я╨а╨Х╨б╨б╨Ю╨Т</b>\n\n"
-                for express in admin_express_details:
-                    admin_text += f"<b>{express['title']}</b>\n"
-                    admin_text += f"тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n"
-                    for i, ev in enumerate(express["events"], 1):
-                        admin_text += (
-                            f"<b>{i}.</b> {ev['sport']} | <i>{ev['league']}</i>\n"
-                            f"ЁЯПЯ <b>{ev['home_team']}</b> тАФ <b>{ev['away_team']}</b>\n"
-                            f"ЁЯУЕ <i>{ev['date'][:16].replace('T', ' ')}</i>\n"
-                            f"ЁЯОп <b>╨Ш╤Б╤Е╨╛╨┤: {ev['prediction']}</b>\n"
-                            f"ЁЯУК ╨г╨▓╨╡╤А╨╡╨╜╨╜╨╛╤Б╤В╤М: {ev['confidence']:.0%}\n"
-                            f"ЁЯТ░ ╨Ъ╨╛╤Н╤Д: {ev['odds']}\n\n"
-                        )
-                    admin_text += (
-                        f"ЁЯТ╡ <b>╨ж╨╡╨╜╨░:</b> {express['price']}тВ╜\n"
-                        f"ЁЯУИ <b>╨Ю╨▒╤Й╨╕╨╣ ╨║╨╛╤Н╤Д:</b> {express['total_odds']:.2f}\n\n"
-                    )
-                admin_text += "тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n"
-                admin_text += f"ЁЯУд ╨Т╤Б╨╡╨│╨╛ ╨╛╨┐╤Г╨▒╨╗╨╕╨║╨╛╨▓╨░╨╜╨╛ ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б╨╛╨▓: {express_published}"
-                await publisher.bot.send_message(chat_id=settings.ADMIN_ID, text=admin_text, parse_mode="HTML")
-                logger.info("ЁЯУи ╨Ф╨╡╤В╨░╨╗╨╕ ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б╨╛╨▓ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╤Л ╨░╨┤╨╝╨╕╨╜╨╕╤Б╤В╤А╨░╤В╨╛╤А╤Г")
-            except Exception as e:
-                logger.error(f"╨Ю╤И╨╕╨▒╨║╨░ ╨╛╤В╨┐╤А╨░╨▓╨║╨╕ ╨╛╤В╤З╨╡╤В╨░ ╨░╨┤╨╝╨╕╨╜╤Г: {e}")
-
-        logger.info(f"ЁЯУд ╨Я╨░╨╣╨┐╨╗╨░╨╣╨╜ ╨╖╨░╨▓╨╡╤А╤И╨╡╨╜. ╨Ю╨┐╤Г╨▒╨╗╨╕╨║╨╛╨▓╨░╨╜╨╛ ╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓: {published} (VIP: {len(vip_predictions)}, ╨Ю╨▒╤Л╤З╨╜╤Л╨╡: {len(regular_predictions)}, ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б╤Л: {express_published})")
         return published
-        
     except Exception as e:
         logger.error(f"тЭМ ╨Ъ╤А╨╕╤В╨╕╤З╨╡╤Б╨║╨░╤П ╨╛╤И╨╕╨▒╨║╨░ ╨▓ ╨┐╨░╨╣╨┐╨╗╨░╨╣╨╜╨╡: {e}")
         return 0
