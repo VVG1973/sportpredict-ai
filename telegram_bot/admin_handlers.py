@@ -1,3 +1,4 @@
+import logging
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery,
@@ -7,7 +8,16 @@ from aiogram.types import (
 from aiogram.filters import Command
 from config import settings
 
+logger = logging.getLogger(__name__)
 admin_router = Router()
+
+
+async def _get_db():
+    """Создаёт и инициализирует подключение к БД"""
+    from database.db import Database
+    db = Database()
+    await db.init()
+    return db
 
 
 # 🆕 Меню для обычных подписчиков
@@ -124,7 +134,7 @@ async def cmd_start(message: Message):
 @admin_router.message(F.text == "🚀 Опубликовать прогнозы")
 async def btn_publish(message: Message):
     """Кнопка публикации с диагностикой"""
-    print(f"🔵 [BTN] Запрос от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
+    logger.debug(f"🔵 [BTN] Запрос от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
     if message.from_user.id != settings.ADMIN_ID:
         await message.answer(f"❌ Доступ запрещен. Ваш ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
         return
@@ -150,9 +160,8 @@ async def btn_publish(message: Message):
             await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>\nВозможно, в выбранных лигах сейчас нет игр на сегодня-завтра.", parse_mode="HTML")
             
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        error_text = str(e)[:500] # Обрезаем длинные ошибки
+        logger.error(f"Ошибка пайплайна: {e}", exc_info=True)
+        error_text = str(e)[:500]
         # ИСПРАВЛЕНО ЗДЕСЬ
         await status_msg.edit_text(f"❌ <b>Критическая ошибка:</b>\n<code>{error_text}</code>", parse_mode="HTML")
 
@@ -401,7 +410,7 @@ async def cmd_stats(message: Message):
 @admin_router.message(Command("publish"))
 async def cmd_publish(message: Message):
     """Команда /publish с диагностикой"""
-    print(f"🔵 [CMD] /publish от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
+    logger.debug(f"🔵 [CMD] /publish от ID={message.from_user.id} (Admin={settings.ADMIN_ID})")
     if message.from_user.id != settings.ADMIN_ID:
         await message.answer(f"❌ Доступ запрещен. Ваш ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
         return
@@ -421,10 +430,8 @@ async def cmd_publish(message: Message):
         else:
             await status_msg.edit_text("⚠️ <b>Матчей не найдено.</b>", parse_mode="HTML")
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Ошибка /publish: {e}", exc_info=True)
         error_text = str(e)[:500]
-        # ИСПРАВЛЕНО ЗДЕСЬ
         await status_msg.edit_text(f"❌ <b>Ошибка:</b>\n<code>{error_text}</code>", parse_mode="HTML")
 
 

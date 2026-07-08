@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict
 import httpx
+import asyncio
+
 ALL_LEAGUES = [
     39,   # Premier League (England)
     140,  # La Liga (Spain)
@@ -23,21 +25,20 @@ ALL_LEAGUES = [
     3,    # UEFA Europa League
 ]
 
-
 logger = logging.getLogger(__name__)
 
 # Летние лиги, которые играют в июне-июле
 SUMMER_LEAGUES = {
-    71: "Brazilian Serie A",      # 🇧🇷 Бразилия
-    253: "MLS",                   # 🇺🇸 США
-    113: "Allsvenskan",           # 🇸🇪 Швеция
-    103: "Eliteserien",           # 🇳🇴 Норвегия
-    98: "J1 League",              # 🇯🇵 Япония
-    292: "K League 1",            # 🇰🇷 Корея
-    128: "Argentine Primera",     # 🇦🇷 Аргентина
-    115: "Chilean Primera",       # 🇨🇱 Чили
-    78: "Liga MX",                # 🇲🇽 Мексика
-    109: "Veikkausliiga",         # 🇫🇮 Финляндия
+    71: "Brazilian Serie A",
+    7: "MLS",
+    113: "Allsvenskan",
+    103: "Eliteserien",
+    98: "J1 League",
+    292: "K League 1",
+    128: "Argentine Primera",
+    115: "Chilean Primera",
+    36: "Liga MX",
+    109: "Veikkausliiga",
 }
 
 
@@ -55,47 +56,38 @@ class APIFootballParser:
             "x-rapidapi-host": "v3.football.api-sports.io"
         }
     
-    def get_fixtures_by_date(self, date: str) -> List[Dict]:
-        """
-        Получает матчи на указанную дату
-        
-        Args:
-            date: Дата в формате YYYY-MM-DD (например, "2026-06-29")
-        
-        Returns:
-            Список матчей
-        """
+    async def get_fixtures_by_date(self, date: str) -> List[Dict]:
+        """Получает матчи на указанную дату"""
         if not self.api_key:
             logger.warning("⚠️ API ключ не установлен, возвращаем пустой список")
             return []
-        
+
         url = f"{self.base_url}/fixtures"
         params = {"date": date}
-        
+
         try:
-            with httpx.Client(headers=self.headers, timeout=30.0) as client:
-                response = client.get(url, params=params)
+            async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
+                response = await client.get(url, params=params)
                 response.raise_for_status()
-                
+
                 data = response.json()
-                
+
                 if data.get("errors"):
                     logger.error(f"❌ API ошибка: {data['errors']}")
                     return []
-                
+
                 fixtures = data.get("response", [])
                 logger.info(f"📅 {date}: получено {len(fixtures)} матчей из API-Football")
-                
-                # Фильтруем только летние лиги
+
                 summer_fixtures = []
                 for fixture in fixtures:
                     league_id = fixture.get("league", {}).get("id")
                     if league_id in SUMMER_LEAGUES:
                         summer_fixtures.append(fixture)
-                
+
                 logger.info(f"   Из них летних лиг: {len(summer_fixtures)}")
                 return summer_fixtures
-        
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
                 logger.error("❌ Превышен лимит запросов (100/день)")
@@ -166,26 +158,19 @@ class APIFootballParser:
         
         return matches
     
-    def get_matches_for_dates(self, days_ahead: int = 3) -> List[Dict]:
-        """
-        Получает матчи на ближайшие N дней
-        
-        Args:
-            days_ahead: Количество дней вперед (по умолчанию 3)
-        
-        Returns:
-            Список всех матчей
-        """
+    async def get_matches_for_dates(self, days_ahead: int = 3) -> List[Dict]:
+        """Получает матчи на ближайшие N дней"""
         all_matches = []
         today = datetime.now()
-        
+
         for i in range(days_ahead):
             date = today + timedelta(days=i)
             date_str = date.strftime("%Y-%m-%d")
-            
-            fixtures = self.get_fixtures_by_date(date_str)
+
+            fixtures = await self.get_fixtures_by_date(date_str)
             matches = self.parse_fixtures(fixtures)
             all_matches.extend(matches)
-        
+            await asyncio.sleep(0.5)
+
         logger.info(f"✅ Всего получено {len(all_matches)} реальных матчей на {days_ahead} дней")
         return all_matches

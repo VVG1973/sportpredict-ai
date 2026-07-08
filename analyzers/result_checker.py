@@ -1,7 +1,9 @@
+import os
 import logging
 import httpx
 from datetime import datetime, timedelta, timezone
 from database.db import Database
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +14,6 @@ class ResultChecker:
     """Проверяет результаты завершённых матчей через API-Football"""
 
     BASE_URL = "https://v3.football.api-sports.io"
-    API_KEY = "c044e6b190cd055586e06945783597f2"
 
     async def run(self):
         """Основной метод проверки"""
@@ -81,7 +82,7 @@ class ResultChecker:
         """Получает результат матча по fixture_id из API-Football"""
         try:
             url = f"{self.BASE_URL}/fixtures"
-            headers = {"x-apisports-key": self.API_KEY}
+            headers = {"x-apisports-key": settings.API_FOOTBALL_KEY}
             params = {"id": fixture_id}
 
             async with httpx.AsyncClient(timeout=30.0) as client:

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 import httpx
@@ -10,17 +11,19 @@ logger = logging.getLogger(__name__)
 
 class EsportsDataCollector:
     """Сбор данных киберспорта с Pandascore API"""
-    
+
     BASE_URL = "https://api.pandascore.co"
-    TOKEN = "F-fZFrnMfNMw3w2CjmGIPorazuipMezHM0ziYK_HWFUpHlB2COg"
     CACHE_DIR = Path("/tmp/esports_cache")
-    
+
     def __init__(self):
+        token = os.environ.get("PANDASCORE_TOKEN", "")
+        if not token:
+            logger.warning("PANDASCORE_TOKEN не установлен, данные киберспорта недоступны")
         try:
             self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         except (PermissionError, OSError):
             pass
-        self.headers = {"Authorization": f"Bearer {self.TOKEN}"}
+        self.headers = {"Authorization": f"Bearer {token}"}
         self.team_cache = {}
     
     async def _request(self, endpoint: str, params: dict = None) -> list:

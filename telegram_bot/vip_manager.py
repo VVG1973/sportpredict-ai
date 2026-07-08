@@ -64,7 +64,7 @@ class CryptoBotService:
     BASE_URL = "https://pay.crypt.bot/api"
     
     def __init__(self):
-        self.api_key = getattr(settings, 'CRYPTOBOT_API_KEY', '')
+        self.api_key = settings.CRYPTO_PAY_API_KEY.get_secret_value() if hasattr(settings.CRYPTO_PAY_API_KEY, 'get_secret_value') else str(settings.CRYPTO_PAY_API_KEY)
         self.headers = {"Crypto-Pay-API-Token": self.api_key}
         self.client = None
     
@@ -77,13 +77,26 @@ class CryptoBotService:
             )
         return self.client
     
+    async def _get_usdt_rub_rate(self) -> float:
+        """Получает текущий курс USDT/RUB"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub")
+                data = resp.json()
+                rate = data.get("tether", {}).get("rbl", 0)
+                if rate > 0:
+                    return rate
+        except Exception:
+            pass
+        return 90.0  # Fallback курс
+
     async def create_invoice(self, amount: float, description: str = "") -> dict:
         """Создаёт инвойс для оплаты"""
         try:
             client = await self._get_client()
-            
-            # Конвертируем RUB в USDT (примерный курс)
-            usdt_amount = round(amount / 90, 2)  # ~90 RUB за 1 USDT
+
+            rate = await self._get_usdt_rub_rate()
+            usdt_amount = round(amount / rate, 2)
             
             response = await client.post(
                 "/createInvoice",
@@ -112,24 +125,15 @@ class CryptoBotService:
             
         except Exception as e:
             logger.error(f"❌ Ошибка создания инвойса: {e}")
-            # Fallback: тестовый инвойс
-            return {
-                "invoice_id": f"test_{datetime.now().timestamp()}",
-                "pay_url": f"https://t.me/CryptoBot?start=TEST{int(datetime.now().timestamp())}",
-                "amount": amount / 90,
-                "asset": "USDT"
-            }
+            return None
     
     async def check_invoice_status(self, invoice_id: str) -> str:
         """Проверяет статус инвойса: paid / active / expired"""
         try:
-            if invoice_id.startswith("test_"):
-                # Тестовый режим — считаем оплаченным через 30 секунд
-                created_time = float(invoice_id.replace("test_", ""))
-                if datetime.now().timestamp() - created_time > 30:
-                    return "paid"
+            if not self.api_key:
+                logger.error("CRYPTO_PAY_API_KEY не установлен, проверка статуса невозможна")
                 return "active"
-            
+
             client = await self._get_client()
             response = await client.get(f"/getInvoices?invoice_ids={invoice_id}")
             

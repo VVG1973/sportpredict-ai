@@ -7,6 +7,39 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://sportpredict:sportpredict@db:5432/sportpredict
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    container_name: sportpredict-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sportpredict
+      POSTGRES_USER: sportpredict
+      POSTGRES_PASSWORD: sportpredict
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sportpredict -d sportpredict"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:

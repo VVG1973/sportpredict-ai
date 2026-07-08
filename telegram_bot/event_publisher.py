@@ -4,6 +4,7 @@
 import logging
 import asyncio
 from datetime import datetime
+from collections import deque
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from config import settings
@@ -71,10 +72,40 @@ class RateLimiter:
             self.requests.append(now)
 
 
+def create_bookmakers_keyboard(is_vip: bool = False) -> "InlineKeyboardMarkup":
+    """Создаёт клавиатуру с букмекерами"""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    bookmakers = [
+        ("Лига Ставок", "https://www.ligastavok.ru"),
+        "Фонбет", "https://www.fonbet.ru",
+        "1хСтавка", "https://1xstavka.ru",
+        "Бетсити", "https://www.betsiti.ru",
+        "Винлайн", "https://www.winline.ru",
+        "Марафон", "https://www.marathonbet.ru",
+    ]
+
+    buttons = []
+    for i in range(0, len(bookmakers), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(bookmakers):
+                item = bookmakers[i + j]
+                if isinstance(item, tuple):
+                    name, url = item
+                else:
+                    name, url = item, item
+                row.append(InlineKeyboardButton(text=name, url=url))
+        buttons.append(row)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 class TelegramPublisher:
-    # 🛡️ Кэш для защиты от дублей
-    _recently_published = set()
-    
+    # 🛡️ Кэш для защиты от дублей (FIFO eviction при переполнении)
+    _recently_published: deque = deque(maxlen=500)
+    _recently_published_set: set = set()
+
     # 🛡️ Rate limiter (20 запросов в секунду — запас до лимита Telegram)
     _rate_limiter = RateLimiter(max_requests=20, period=1.0)
 
@@ -106,9 +137,10 @@ class TelegramPublisher:
         match = prediction.get("match", {})
         sport = match.get("sport", "⚽ Футбол")
 
-        # 🛑 ФИЛЬТР 1: Игнорируем не-футбол
-        if any(s in sport.lower() for s in ["баскет", "basket", "хоккей", "hockey", "теннис", "tennis"]):
-            logger.info(f"⏭️ Пропуск не-футбольного матча: {sport}")
+        # 🛑 ФИЛЬТР 1: Игнорируем неподдерживаемые виды спорта
+        supported_sports = ["футбол", "football", "soccer", "cs", "dota", "lol", "valorant", "кибер", "esport"]
+        if not any(s in sport.lower() for s in supported_sports):
+            logger.info(f"⏭️ Пропуск неподдерживаемого вида спорта: {sport}")
             return
 
         league = match.get("league", "")
@@ -119,22 +151,25 @@ class TelegramPublisher:
         conf = prediction.get("confidence", 0.5)
         odds = prediction.get("odds_est", 2.0)
 
-        # 🛑 ФИЛЬТР 2: Защита от дублей
+        # 🛑 ФИЛЬТР 2: Защита от дублей (FIFO eviction)
         match_key = f"{home}_{away}_{date_ru}"
-        if match_key in self._recently_published:
+        if match_key in self._recently_published_set:
             logger.warning(f"⚠️ Пропуск дубликата: {home} vs {away}")
             return
-        self._recently_published.add(match_key)
 
-        if len(self._recently_published) > 200:
-            self._recently_published.clear()
+        # Добавляем в deque (автоматически удаляет самый старый при переполнении)
+        if len(self._recently_published) == self._recently_published.maxlen:
+            old_key = self._recently_published[0]
+            self._recently_published_set.discard(old_key)
+        self._recently_published.append(match_key)
+        self._recently_published_set.add(match_key)
 
         # 🛑 ФИЛЬТР 3: Ничья только для футбола
         if pred in ["X", "D", "Ничья"] and not any(s in sport.lower() for s in ["футбол", "football", "soccer"]):
             logger.warning(f"⚠️ Пропуск ничьей для {sport}: {home} vs {away}")
             return
 
-        vip_badge = "👑 **VIP-ПРОГНОЗ**\n\n" if is_vip else ""
+        vip_badge = "👑 <b>VIP-ПРОГНОЗ</b>\n\n" if is_vip else ""
         # Дополнительные рынки из multi-output
         extra_lines = []
         total = prediction.get("total", {})
@@ -181,14 +216,14 @@ class TelegramPublisher:
 
         text = (
             f"{vip_badge}{sport} | {league}\n\n"
-            f"🏟 **{home}** vs **{away}**\n"
+            f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🎯 **Прогноз:** {pred}\n"
+            f"🎯 <b>Прогноз:</b> {pred}\n"
             f"📊 Уверенность: {conf:.0%}\n"
             f"💰 Коэффициент: {odds:.2f}"
-                        f"{extra_text}"
+            f"{extra_text}"
             f"{value_badge}"
-            f"━━━━━━━━━━━━━━━━━━━━━\n🤖 _SportPredict AI_"
+            f"━━━━━━━━━━━━━━━━━━━━━\n🤖 <i>SportPredict AI</i>"
         )
 
         target_channel = self.vip_channel_id if (is_vip and self.vip_channel_id) else self.channel_id

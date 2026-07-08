@@ -1,3 +1,4 @@
+import os
 import logging
 import httpx
 import asyncio
@@ -115,6 +116,62 @@ class RealSportsParser:
         matches = matches[:count]
         logger.info(f"✅ Получено {len(matches)} реальных матчей")
         return matches
+
+    async def get_match_odds(self, fixture_id: str) -> Dict:
+        """Получает коэффициенты матча из API-Football"""
+        api_key = os.environ.get("API_FOOTBALL_KEY", "")
+        if not api_key:
+            logger.warning("API_FOOTBALL_KEY не установлен, коэффициенты недоступны")
+            return {}
+
+        url = "https://v3.football.api-sports.io/odds"
+        headers = {"x-apisports-key": api_key}
+        params = {"fixture": fixture_id, "bookmaker": 1}
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=headers, params=params)
+                data = response.json()
+
+                odds_data = data["response"][0]["bookmakers"][0]["bets"]
+
+                result = {
+                    "home": 0, "draw": 0, "away": 0,
+                    "over_2_5": 0, "under_2_5": 0,
+                    "both_yes": 0, "both_no": 0,
+                    "handicap_home": 0, "handicap_away": 0,
+                }
+
+                for bet in odds_data:
+                    bet_name = bet["name"]
+                    values = bet["values"]
+
+                    if bet_name == "Match Winner":
+                        for v in values:
+                            if v["value"] == "Home": result["home"] = float(v["odd"])
+                            elif v["value"] == "Draw": result["draw"] = float(v["odd"])
+                            elif v["value"] == "Away": result["away"] = float(v["odd"])
+
+                    elif bet_name == "Over/Under 2.5":
+                        for v in values:
+                            if v["value"] == "Over": result["over_2_5"] = float(v["odd"])
+                            elif v["value"] == "Under": result["under_2_5"] = float(v["odd"])
+
+                    elif bet_name == "Both Teams Score":
+                        for v in values:
+                            if v["value"] == "Yes": result["both_yes"] = float(v["odd"])
+                            elif v["value"] == "No": result["both_no"] = float(v["odd"])
+
+                    elif bet_name == "Asian Handicap":
+                        for v in values:
+                            if v["value"].startswith("Home"): result["handicap_home"] = float(v["odd"])
+                            elif v["value"].startswith("Away"): result["handicap_away"] = float(v["odd"])
+
+                return result
+
+        except Exception as e:
+            logger.error(f"Ошибка получения коэффициентов: {e}")
+            return {}
 
     def _format_match(self, event: dict, league_name: str) -> Dict:
         """Форматирует матч из API в нужный формат"""

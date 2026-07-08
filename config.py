@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     CRYPTO_BOT_TOKEN: SecretStr = Field(default="", description="Токен CryptoBot API")
     CRYPTO_PAY_API_KEY: SecretStr = Field(default="", description="API ключ CryptoPay")
 
+    # === ВНЕШНИЕ API ===
+    API_FOOTBALL_KEY: str = Field(default="", description="API-Football ключ (RapidAPI)")
+    PANDASCORE_TOKEN: str = Field(default="", description="Pandascore API токен")
+    THESPORTSDB_KEY: str = Field(default="3", description="TheSportsDB API ключ")
+
     # === БАЗА ДАННЫХ ===
     DATABASE_URL: str = Field(default="data/predictions.db", description="Путь к БД")
 
@@ -38,6 +43,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"
 
 
 # Создаём глобальный объект настроек

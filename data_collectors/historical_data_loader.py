@@ -100,7 +100,7 @@ class HistoricalDataLoader:
             "result": result
         }
     
-    async def load_history(self, league_id: int = None  # Will iterate over ALL_LEAGUES, season: int = 2024):
+    async def load_history(self, league_id: int = None, season: int = 2024):
         """Загружает историю за 1 сезон (экономим лимит API)"""
         logger.info(f"🔄 Загрузка сезона {season}...")
         fixtures = await self.fetch_season_fixtures(league_id, season)

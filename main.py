@@ -28,6 +28,7 @@ from database.db import Database
 from analyzers.result_checker import ResultChecker
 from telegram_bot.admin_handlers import admin_router
 from telegram_bot.favorites import router as favorites_router
+from telegram_bot.handlers import router as handlers_router
 from telegram_bot.vip_manager import VIPManager, CryptoBotService, SubscriptionManager, SinglePurchaseService
 
 # ╨У╨╗╨╛╨▒╨░╨╗╤М╨╜╤Л╨╣ ╨╖╨░╨╝╨╛╨║ ╨╛╤В ╨╛╨┤╨╜╨╛╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╤Е ╨╖╨░╨┐╤Г╤Б╨║╨╛╨▓ ╨┐╨░╨╣╨┐╨╗╨░╨╣╨╜╨░
@@ -149,7 +150,12 @@ async def run_pipeline():
             now = pd.Timestamp.now(tz="UTC")
             if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
                 continue
-                
+
+            # Извлекаем коэффициенты из данных матча
+            match_odds = m.get("odds", {})
+            if isinstance(match_odds, (int, float)):
+                match_odds = {"home": match_odds, "draw": 0, "away": 0}
+
             # Определяем вид спорта
             sport_lower = m.get("sport", "").lower()
             is_esports = any(s in sport_lower for s in ["cs", "dota", "lol", "valorant", "overwatch", "esport", "кибер"])
@@ -197,11 +203,11 @@ async def run_pipeline():
                 confidence = ml_result.get('confidence', 0.5)
 
             # ╨Ь╨░╨┐╨┐╨╕╨╜╨│ ╨┐╤А╨╡╨┤╤Б╨║╨░╨╖╨░╨╜╨╕╤П ╨▓ ╤А╤Г╤Б╤Б╨║╨╕╨╣ ╤Д╨╛╤А╨╝╨░╤В
-            outcome_mapping = {"H": "╨Я1", "D": "X", "A": "╨Я2"}
+            outcome_mapping = {"H": "П1", "D": "X", "A": "П2"}
             if predicted_outcome in outcome_mapping:
                 predicted_outcome = outcome_mapping[predicted_outcome]
             else:
-                predicted_outcome = m.get("outcome", "╨Я1")
+                predicted_outcome = m.get("outcome", "П1")
 
             # ЁЯЫбя╕П ╨Ш╨б╨Я╨а╨Р╨Т╨Ы╨Х╨Э ╨С╨Р╨У: ╨б╨╗╨╛╨▓╨░╤А╤М match_data ╤В╨╡╨┐╨╡╤А╤М ╨▓╤Л╨╜╨╡╤Б╨╡╨╜ ╨Ш╨Ч ╨▒╨╗╨╛╨║╨░ else ╨╕ ╨┤╨╛╤Б╤В╤Г╨┐╨╡╨╜ ╨Т╨б╨Х╨У╨Ф╨Р
             match_data = {
@@ -612,6 +618,7 @@ async def main():
     # ╨Ш╨╜╨╕╤Ж╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╤П Aiogram Bot & Dispatcher
     publisher = TelegramPublisher()
     dp = Dispatcher()
+    dp.include_router(handlers_router)
     dp.include_router(admin_router)
     dp.include_router(favorites_router)
 

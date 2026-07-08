@@ -1,73 +1,108 @@
 """
-Тесты для result_checker.py — проверяем отсутствие случайных результатов
+Тесты для result_checker.py
 """
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from analyzers.result_checker import ResultChecker
+
+
+def _make_mock_client(response_data):
+    """Создаёт мок httpx.AsyncClient с нужным ответом"""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = response_data
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
 
 
 @pytest.mark.asyncio
 async def test_no_random_results():
-    """Проверяем, что при отсутствии данных результат = None, а не случайный"""
+    """Проверяем, что при отсутствии данных результат = None"""
     checker = ResultChecker()
+    mock_client = _make_mock_client({"response": []})
 
-    # Мокаем API-ответ (пустой — нет данных)
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"events": []}
-        mock_response.text = '{"events": []}'
-        mock_get.return_value = mock_response
-
-        result = await checker._get_match_result("Team A", "Team B", "2026-07-02T15:00:00")
-
-        # ❗ Важно: результат должен быть None, а не "H"/"D"/"A"
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await checker._get_match_result("12345")
         assert result is None
 
 
 @pytest.mark.asyncio
 async def test_real_result_parsed():
-    """Проверяем, что реальный результат парсится правильно"""
+    """Проверяем победу хозяев"""
     checker = ResultChecker()
+    mock_client = _make_mock_client({
+        "response": [{
+            "fixture": {"id": 12345, "status": {"short": "FT"}},
+            "goals": {"home": 2, "away": 1}
+        }]
+    })
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "events": [{
-                "strHomeTeam": "Team A",
-                "strAwayTeam": "Team B",
-                "intHomeScore": "2",
-                "intAwayScore": "1"
-            }]
-        }
-        mock_response.text = '{"events": [...]}'
-        mock_get.return_value = mock_response
-
-        result = await checker._get_match_result("Team A", "Team B", "2026-07-02T15:00:00")
-
-        assert result == "H"  # Победа хозяев
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await checker._get_match_result("12345")
+        assert result == "H"
 
 
 @pytest.mark.asyncio
 async def test_draw_result():
     """Проверяем ничью"""
     checker = ResultChecker()
+    mock_client = _make_mock_client({
+        "response": [{
+            "fixture": {"id": 12345, "status": {"short": "FT"}},
+            "goals": {"home": 1, "away": 1}
+        }]
+    })
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "events": [{
-                "strHomeTeam": "Team A",
-                "strAwayTeam": "Team B",
-                "intHomeScore": "1",
-                "intAwayScore": "1"
-            }]
-        }
-        mock_response.text = '{"events": [...]}'
-        mock_get.return_value = mock_response
-
-        result = await checker._get_match_result("Team A", "Team B", "2026-07-02T15:00:00")
-
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await checker._get_match_result("12345")
         assert result == "D"
+
+
+@pytest.mark.asyncio
+async def test_away_win_result():
+    """Проверяем победу гостей"""
+    checker = ResultChecker()
+    mock_client = _make_mock_client({
+        "response": [{
+            "fixture": {"id": 12345, "status": {"short": "FT"}},
+            "goals": {"home": 0, "away": 3}
+        }]
+    })
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await checker._get_match_result("12345")
+        assert result == "A"
+
+
+@pytest.mark.asyncio
+async def test_match_not_finished():
+    """Проверяем незавершённый матч"""
+    checker = ResultChecker()
+    mock_client = _make_mock_client({
+        "response": [{
+            "fixture": {"id": 12345, "status": {"short": "1H"}},
+            "goals": {"home": 1, "away": 0}
+        }]
+    })
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await checker._get_match_result("12345")
+        assert result is None
+
+
+def test_check_prediction_win():
+    """Проверяем маппинг прогнозов"""
+    checker = ResultChecker()
+    assert checker._check_prediction_win("П1", "H") is True
+    assert checker._check_prediction_win("П1", "A") is False
+    assert checker._check_prediction_win("X", "D") is True
+    assert checker._check_prediction_win("X", "H") is False
+    assert checker._check_prediction_win("П2", "A") is True
+    assert checker._check_prediction_win("П2", "D") is False
+    assert checker._check_prediction_win("H", "H") is True
+    assert checker._check_prediction_win("D", "D") is True
+    assert checker._check_prediction_win("A", "A") is True
