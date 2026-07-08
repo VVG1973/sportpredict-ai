@@ -13,10 +13,13 @@ class EsportsDataCollector:
     
     BASE_URL = "https://api.pandascore.co"
     TOKEN = "F-fZFrnMfNMw3w2CjmGIPorazuipMezHM0ziYK_HWFUpHlB2COg"
-    CACHE_DIR = Path("data/esports/cache")
+    CACHE_DIR = Path("/tmp/esports_cache")
     
     def __init__(self):
-        self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            pass
         self.headers = {"Authorization": f"Bearer {self.TOKEN}"}
         self.team_cache = {}
     
