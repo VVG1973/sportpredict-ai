@@ -1,6 +1,6 @@
 """
 Парсер реальных матчей из API-Football
-Получает матчи всех лиг мира (включая летние)
+Поддерживает: футбол, хоккей, теннис, киберспорт
 """
 import logging
 import os
@@ -9,37 +9,76 @@ from typing import List, Dict
 import httpx
 import asyncio
 
-ALL_LEAGUES = [
-    39,   # Premier League (England)
-    140,  # La Liga (Spain)
-    135,  # Serie A (Italy)
-    78,   # Bundesliga (Germany)
-    61,   # Ligue 1 (France)
-    88,   # Eredivisie (Netherlands)
-    94,   # Primeira Liga (Portugal)
-    235,  # Super Lig (Turkey)
-    71,   # Serie A (Brazil)
-    7,    # MLS (USA)
-    1,    # FIFA World Cup
-    2,    # UEFA Champions League
-    3,    # UEFA Europa League
-]
-
 logger = logging.getLogger(__name__)
 
-# Летние лиги, которые играют в июне-июле
-SUMMER_LEAGUES = {
-    71: "Brazilian Serie A",
-    7: "MLS",
-    113: "Allsvenskan",
-    103: "Eliteserien",
-    98: "J1 League",
-    292: "K League 1",
-    128: "Argentine Primera",
-    115: "Chilean Primera",
-    36: "Liga MX",
-    109: "Veikkausliiga",
-}
+# ═══════════════════════════════════════════════════════
+# ЛИГИ ПО ВИДАМ СПОРТА
+# ═══════════════════════════════════════════════════════
+
+# Футбол (все лиги — основные + летние)
+FOOTBALL_LEAGUES = [
+    39, 140, 135, 78, 61, 88, 94, 235, 71, 7, 1, 2, 3,
+    113, 103, 98, 292, 128, 115, 36, 109,
+]
+
+# Хоккей (НХЛ, КХЛ, Шведская лига, Финская, Чешская, и т.д.)
+HOCKEY_LEAGUES = [
+    1,    # NHL
+    2,    # KHL
+    8,    # SHL (Швеция)
+    9,    # Liiga (Финляндия)
+    10,   # Extraliga (Чехия)
+    11,   # National League (Швейцария)
+    12,   # DEL (Германия)
+    13,   # ICEHL (Австрия)
+    14,   # MHL (Россия)
+    16,   # OHL (Канада)
+    17,   # QMJHL (Канада)
+    18,   # WHL (Канада)
+    72,   # Liiga (Финляндия)
+    112,  # AHL (США)
+    113,  # ECHL (США)
+]
+
+# Теннис (ATP, WTA, ITF)
+TENNIS_LEAGUES = [
+    1,    # ATP Masters 1000
+    2,    # ATP 500
+    3,    # ATP 250
+    4,    # WTA 1000
+    5,    # WTA 500
+    6,    # WTA 250
+    7,    # Grand Slam
+    8,    # ATP Challenger
+    9,    # ITF Men
+    10,   # ITF Women
+]
+
+# Киберспорт (ESL, DreamHack, и т.д.)
+ESPORTS_LEAGUES = [
+    1,    # ESL Pro League
+    2,    # ESL One
+    3,    # DreamHack
+    4,   # BLAST Premier
+    5,   # IEM
+    6,   # PGL
+    7,   # ESEA
+    8,   # FACEIT
+]
+
+# Все лиги вместе
+ALL_LEAGUES = FOOTBALL_LEAGUES + HOCKEY_LEAGUES + TENNIS_LEAGUES + ESPORTS_LEAGUES
+
+# Маппинг: ID лиги -> вид спорта
+LEAGUE_SPORT_MAP = {}
+for lid in FOOTBALL_LEAGUES:
+    LEAGUE_SPORT_MAP[lid] = "⚽ Футбол"
+for lid in HOCKEY_LEAGUES:
+    LEAGUE_SPORT_MAP[lid] = "🏒 Хоккей"
+for lid in TENNIS_LEAGUES:
+    LEAGUE_SPORT_MAP[lid] = "🎾 Теннис"
+for lid in ESPORTS_LEAGUES:
+    LEAGUE_SPORT_MAP[lid] = "🎮 Киберспорт"
 
 
 class APIFootballParser:
@@ -56,11 +95,21 @@ class APIFootballParser:
             "x-rapidapi-host": "v3.football.api-sports.io"
         }
     
-    async def get_fixtures_by_date(self, date: str) -> List[Dict]:
-        """Получает матчи на указанную дату"""
+    async def get_fixtures_by_date(self, date: str, sport: str = "football") -> List[Dict]:
+        """Получает матчи на указанную дату для указанного вида спорта"""
         if not self.api_key:
-            logger.warning("⚠️ API ключ не установлен, возвращаем пустой список")
+            logger.warning("⚠️ API ключ не установлен")
             return []
+
+        # Определяем лиги для данного вида спорта
+        if sport == "hockey":
+            target_leagues = HOCKEY_LEAGUES
+        elif sport == "tennis":
+            target_leagues = TENNIS_LEAGUES
+        elif sport == "esports":
+            target_leagues = ESPORTS_LEAGUES
+        else:
+            target_leagues = FOOTBALL_LEAGUES
 
         url = f"{self.base_url}/fixtures"
         params = {"date": date}
@@ -77,16 +126,17 @@ class APIFootballParser:
                     return []
 
                 fixtures = data.get("response", [])
-                logger.info(f"📅 {date}: получено {len(fixtures)} матчей из API-Football")
 
-                summer_fixtures = []
+                # Фильтруем по нужным лигам
+                filtered = []
                 for fixture in fixtures:
                     league_id = fixture.get("league", {}).get("id")
-                    if league_id in SUMMER_LEAGUES:
-                        summer_fixtures.append(fixture)
+                    if league_id in target_leagues:
+                        filtered.append(fixture)
 
-                logger.info(f"   Из них летних лиг: {len(summer_fixtures)}")
-                return summer_fixtures
+                sport_emoji = {"football": "⚽", "hockey": "🏒", "tennis": "🎾", "esports": "🎮"}.get(sport, "⚽")
+                logger.info(f"📅 {sport_emoji} {date}: {len(filtered)}/{len(fixtures)} матчей ({sport})")
+                return filtered
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
@@ -136,12 +186,17 @@ class APIFootballParser:
                                     away_odds = float(value.get("odd", 0))
                             break
                 
+                # Определяем вид спорта по ID лиги
+                league_id = league.get("id")
+                sport = LEAGUE_SPORT_MAP.get(league_id, "⚽ Футбол")
+
                 match = {
                     "fixture_id": f"apifb_{fixture_data.get('id')}",
                     "league": league.get("name", "Unknown"),
-                    "league_id": league.get("id"),
-                    "date": fixture_data.get("date", "")[:10],  # YYYY-MM-DD
-                    "time": fixture_data.get("date", "")[11:16],  # HH:MM
+                    "league_id": league_id,
+                    "sport": sport,
+                    "date": fixture_data.get("date", "")[:10],
+                    "time": fixture_data.get("date", "")[11:16],
                     "home_team": teams.get("home", {}).get("name", ""),
                     "away_team": teams.get("away", {}).get("name", ""),
                     "home_odds": home_odds,
@@ -159,18 +214,21 @@ class APIFootballParser:
         return matches
     
     async def get_matches_for_dates(self, days_ahead: int = 3) -> List[Dict]:
-        """Получает матчи на ближайшие N дней"""
+        """Получает матчи ВСЕХ видов спорта на ближайшие N дней"""
         all_matches = []
         today = datetime.now()
+
+        sports = ["football", "hockey", "tennis"]
 
         for i in range(days_ahead):
             date = today + timedelta(days=i)
             date_str = date.strftime("%Y-%m-%d")
 
-            fixtures = await self.get_fixtures_by_date(date_str)
-            matches = self.parse_fixtures(fixtures)
-            all_matches.extend(matches)
-            await asyncio.sleep(0.5)
+            for sport in sports:
+                fixtures = await self.get_fixtures_by_date(date_str, sport=sport)
+                matches = self.parse_fixtures(fixtures)
+                all_matches.extend(matches)
+                await asyncio.sleep(0.3)
 
-        logger.info(f"✅ Всего получено {len(all_matches)} реальных матчей на {days_ahead} дней")
+        logger.info(f"✅ Всего: {len(all_matches)} матчей (футбол + хоккей + теннис) на {days_ahead} дней")
         return all_matches

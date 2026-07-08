@@ -218,35 +218,52 @@ class RealSportsParser:
 
 
 class HybridSportsParser:
-    """Гибридный парсер: реальные данные + Mock для разнообразия"""
+    """Гибридный парсер: реальные данные из API-Football (футбол + хоккей + теннис) + киберспорт"""
 
-    def __init__(self, min_confidence: float = 0.70, real_data_ratio: float = 0.6):
+    def __init__(self, min_confidence: float = 0.70):
         self.min_confidence = min_confidence
-        self.real_data_ratio = real_data_ratio
         self.real_parser = RealSportsParser(min_confidence=min_confidence)
 
     async def fetch_upcoming_matches(self, count: int = 20) -> List[Dict]:
-        real_count = int(count * self.real_data_ratio)
-        mock_count = count - real_count
+        """Получает реальные матчи: футбол + хоккей + теннис + киберспорт"""
+        all_matches = []
 
-        # Распределяем: 60% футбол, 25% киберспорт, 15% другие
-        football_count = int(real_count * 0.60)
-        esports_count = int(real_count * 0.25)
-        other_count = real_count - football_count - esports_count
+        # 1. Футбол (TheSportsDB)
+        try:
+            football = await self.real_parser.fetch_upcoming_matches(count=10)
+            all_matches.extend(football)
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка футбола: {e}")
 
-        logger.info(f"🔄 Гибридный режим: {football_count} футбол + {esports_count} киберспорт + {other_count} другие + {mock_count} mock")
+        # 2. Хоккей + Теннис (API-Football)
+        try:
+            from data_collectors.api_football_parser import APIFootballParser
+            api_parser = APIFootballParser()
+            api_matches = await api_parser.get_matches_for_dates(days_ahead=3)
+            all_matches.extend(api_matches)
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка API-Football (хоккей/теннис): {e}")
 
-        # Получаем футбольные матчи
-        real_matches = await self.real_parser.fetch_upcoming_matches(count=football_count)
-
-        # Получаем киберспортивные матчи
+        # 3. Киберспорт (Pandascore)
         try:
             from data_collectors.esports_parser import EsportsParser
             esports_parser = EsportsParser(min_confidence=self.min_confidence)
-            esports_matches = await esports_parser.fetch_esports_matches(count=esports_count)
-            real_matches.extend(esports_matches)
+            esports_matches = await esports_parser.fetch_esports_matches(count=5)
+            all_matches.extend(esports_matches)
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось получить киберспортивные матчи: {e}")
+            logger.warning(f"⚠️ Ошибка киберспорта: {e}")
+
+        # Убираем дубликаты по fixture_id
+        seen = set()
+        unique_matches = []
+        for m in all_matches:
+            fid = m.get("fixture", {}).get("id") or m.get("fixture_id")
+            if fid and fid not in seen:
+                seen.add(fid)
+                unique_matches.append(m)
+
+        logger.info(f"✅ Всего уникальных матчей: {len(unique_matches)} (футбол + хоккей + теннис + киберспорт)")
+        return unique_matches[:count]
 
         # ❗ УБРАНО: добавление mock-матчей для "разнообразия"
         # Если реальных матчей мало — просто возвращаем то, что есть

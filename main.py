@@ -163,7 +163,9 @@ async def run_pipeline():
             # Определяем вид спорта
             sport_lower = m.get("sport", "").lower()
             is_esports = any(s in sport_lower for s in ["cs", "dota", "lol", "valorant", "overwatch", "esport", "кибер"])
-            
+            is_hockey = any(s in sport_lower for s in ["хоккей", "hockey", "nhl", "кхл"])
+            is_tennis = any(s in sport_lower for s in ["теннис", "tennis", "atp", "wta"])
+
             if is_esports:
                 # Киберспорт: используем специальную модель
                 game = "csgo" if "cs" in sport_lower else "dota2" if "dota" in sport_lower else "csgo"
@@ -173,6 +175,24 @@ async def run_pipeline():
                     "match_date": str(match_date),
                     "odds": match_odds
                 }, game=game)
+            elif is_hockey or is_tennis:
+                # Хоккей/Теннис: предсказание на основе коэффициентов
+                home_odd = match_odds.get('home', 2.0) or 2.0
+                away_odd = match_odds.get('away', 2.0) or 2.0
+                draw_odd = match_odds.get('draw', 0) or 0
+
+                # Имplied probability
+                home_prob = 1.0 / home_odd if home_odd > 0 else 0.33
+                away_prob = 1.0 / away_odd if away_odd > 0 else 0.33
+
+                if home_prob > away_prob:
+                    predicted_outcome = "П1"
+                    confidence = min(home_prob * 1.1, 0.85)
+                else:
+                    predicted_outcome = "П2"
+                    confidence = min(away_prob * 1.1, 0.85)
+
+                ml_result = {"prediction": predicted_outcome.replace("П1", "H").replace("П2", "A"), "confidence": confidence}
             else:
                 # Футбол: используем основную модель с value bet
                 predict_method = getattr(ml_model, 'predict_with_value', ml_model.predict)
