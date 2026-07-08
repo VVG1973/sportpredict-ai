@@ -300,16 +300,19 @@ class TelegramPublisher:
 
     # ═══════════════════════════════════════════════════════
     # ЭКСПРЕСС: в ОБА канала (199₽ двойник, 299₽ тройник)
+    # Исходы СКРЫТЫ — видны только после покупки
     # ═══════════════════════════════════════════════════════
     async def publish_express_to_both(self, express_events: list, total_odds: float, label: str) -> bool:
         if not self.bot:
             return False
 
+        events_count = len(express_events)
+        price = 199 if events_count <= 2 else 299
+
         events_text = ""
         for i, ev in enumerate(express_events, 1):
             home = to_russian_name(ev.get("home_team", "?"))
             away = to_russian_name(ev.get("away_team", "?"))
-            pred = ev.get("prediction", "?")
             odds = ev.get("odds", 2.0)
             date_ru = format_datetime_ru(ev.get("date", ""))
             sport = ev.get("sport", "⚽")
@@ -318,30 +321,39 @@ class TelegramPublisher:
                 f"<b>{i}.</b> {sport} | <i>{league}</i>\n"
                 f"🏟 <b>{home}</b> — <b>{away}</b>\n"
                 f"📅 {date_ru}\n"
-                f"🎯 Исход: <b>{pred}</b> | Коэф: <b>{odds:.2f}</b>\n\n"
+                f"💰 Коэф: <b>{odds:.2f}</b>\n\n"
             )
 
         text = (
             f"🔥 <b>{label}</b>\n\n"
             f"{events_text}"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📈 <b>Общий коэффициент:</b> {total_odds:.2f}\n\n"
-            f"🎰 <b>Ставь у букмекера:</b>"
+            f"📈 <b>Общий коэффициент:</b> {total_odds:.2f}\n"
+            f"💰 <b>Цена:</b> {price}₽\n\n"
+            f"🔐 <i>Исходы скрыты. Купите экспресс!</i>"
         )
 
-        keyboard = create_bookmakers_keyboard()
+        # Кнопка покупки экспресса
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        buy_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💰 Купить экспресс — {price}₽", callback_data=f"buy_express:{events_count}")],
+        ])
+        # Кнопки букмекеров
+        for row in create_bookmakers_keyboard().inline_keyboard:
+            buy_kb.inline_keyboard.append(row)
+
         sent = False
 
         if self.channel_id:
             try:
-                await self._send(self.channel_id, text, keyboard)
+                await self._send(self.channel_id, text, buy_kb)
                 sent = True
             except Exception as e:
                 logger.error(f"❌ Ошибка экспресса в канал: {e}")
 
         if self.vip_channel_id:
             try:
-                await self._send(self.vip_channel_id, text, keyboard)
+                await self._send(self.vip_channel_id, text, buy_kb)
                 sent = True
             except Exception as e:
                 logger.error(f"❌ Ошибка экспресса в VIP: {e}")
