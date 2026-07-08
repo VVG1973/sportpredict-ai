@@ -150,14 +150,40 @@ async def run_pipeline():
             if pd.isna(match_date) or match_date < now - pd.Timedelta(days=2):
                 continue
                 
-            # ЁЯз╡ ╨Ю╨Я╨в╨Ш╨Ь╨Ш╨Ч╨Р╨ж╨Ш╨п: ╨Ю╨▒╤Г╤З╨╡╨╜╨╕╨╡/╤А╨░╤Б╤З╨╡╤В ML-╨╝╨╛╨┤╨╡╨╗╨╕ ╨▓╤Л╨╜╨╛╤Б╨╕╨╝ ╨▓ ╨╛╤В╨┤╨╡╨╗╤М╨╜╤Л╨╣ ╨┐╨╛╤В╨╛╨║
-            ml_result = await asyncio.to_thread(
-                ml_model.predict,
-                home_team=home_team,
-                away_team=away_team,
-                match_date=match_date,
-                historical_df=historical_df
-            )
+            # Определяем вид спорта
+            sport_lower = m.get("sport", "").lower()
+            is_esports = any(s in sport_lower for s in ["cs", "dota", "lol", "valorant", "overwatch", "esport", "кибер"])
+            
+            if is_esports:
+                # Киберспорт: используем специальную модель
+                game = "csgo" if "cs" in sport_lower else "dota2" if "dota" in sport_lower else "csgo"
+                ml_result = await ml_model.predict_esports({
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "match_date": str(match_date),
+                    "odds": match_odds
+                }, game=game)
+            else:
+                # Футбол: используем основную модель с value bet
+                predict_method = getattr(ml_model, 'predict_with_value', ml_model.predict)
+                
+                ml_input = {
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "match_date": str(match_date),
+                    "odds": match_odds,
+                    "B365H": match_odds.get('home', 0) or m.get("odds", {}).get('home', 0),
+                    "B365D": match_odds.get('draw', 0) or m.get("odds", {}).get('draw', 0),
+                    "B365A": match_odds.get('away', 0) or m.get("odds", {}).get('away', 0),
+                }
+                
+                if historical_df is not None:
+                    ml_input["historical_df"] = historical_df
+                
+                ml_result = await asyncio.to_thread(
+                    predict_method,
+                    ml_input
+                )
 
             # ЁЯФД Multi-output ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨░
             if isinstance(ml_result, dict) and 'outcome' in ml_result:

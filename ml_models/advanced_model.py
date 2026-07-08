@@ -4,6 +4,11 @@ from pathlib import Path
 from typing import Dict, Optional
 import numpy as np
 import xgboost as xgb
+try:
+    from data_collectors.esports_collector import EsportsDataCollector
+    ESPORTS_AVAILABLE = True
+except ImportError:
+    ESPORTS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +23,25 @@ class AdvancedPredictionModel:
         self.feature_cols = []
         self.accuracy = {}
         self.is_loaded = False
+        self.esports_collector = EsportsDataCollector() if ESPORTS_AVAILABLE else None
+        self.esports_models = {}
         self._load_model()
+        self._load_esports_models()
+
+    def _load_esports_models(self):
+        """Загружает модели киберспорта"""
+        for game in ["csgo", "dota2"]:
+            try:
+                model_path = Path(f"ml_models/xgboost_{game}.json")
+                if model_path.exists():
+                    model = xgb.XGBClassifier()
+                    model.load_model(str(model_path))
+                    self.esports_models[game] = model
+                    logger.info(f"✅ Модель {game} загружена")
+                else:
+                    logger.info(f"ℹ️ Модель {game} не найдена")
+            except Exception as e:
+                logger.error(f"❌ Ошибка загрузки {game}: {e}")
 
     def _load_model(self):
         """Загружает XGBoost модели из JSON-файлов"""
@@ -87,6 +110,50 @@ class AdvancedPredictionModel:
             except (ValueError, TypeError):
                 features.append(0.0)
         return np.array(features).reshape(1, -1)
+
+    async def predict_esports(self, match_data: Dict, game: str = "csgo") -> Dict:
+        """Прогноз для киберспортивных матчей"""
+        if not self.esports_collector or game not in self.esports_models:
+            logger.warning(f"⚠️ Модель {game} не доступна, используем fallback")
+            return self._fallback_prediction_esports(game)
+        
+        try:
+            team1_name = match_data.get("home_team", "")
+            team2_name = match_data.get("away_team", "")
+            
+            # Находим ID команд через API
+            # (упрощённо — используем имена как есть)
+            # В реальности нужно искать team_id через поиск
+            
+            # Получаем фичи через коллектор
+            # Здесь нужно знать team_id, пока используем fallback
+            logger.info(f"🎮 Прогноз {game}: {team1_name} vs {team2_name}")
+            
+            # Заглушка: используем базовую логику
+            # В полной версии здесь будет вызов get_match_features
+            
+            return self._fallback_prediction_esports(game)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка прогноза {game}: {e}")
+            return self._fallback_prediction_esports(game)
+
+    def _fallback_prediction_esports(self, game: str = "csgo") -> Dict:
+        """Fallback для киберспорта"""
+        if game == "dota2":
+            return {
+                "outcome": {"prediction": "H", "confidence": 0.55, "probabilities": {"H": 0.55, "A": 0.45}},
+                "total": {"prediction": "ТБ 50.5", "confidence": 0.5},
+                "both_scored": {"prediction": "—", "confidence": 0.5},
+                "handicap": {"prediction": "Ф1 +5.5", "confidence": 0.5}
+            }
+        else:  # csgo
+            return {
+                "outcome": {"prediction": "H", "confidence": 0.55, "probabilities": {"H": 0.55, "A": 0.45}},
+                "total": {"prediction": "ТБ 22.5", "confidence": 0.5},
+                "both_scored": {"prediction": "—", "confidence": 0.5},
+                "handicap": {"prediction": "Ф1 +3.5", "confidence": 0.5}
+            }
 
     def predict(self, match_data: Dict) -> Dict:
         """Делает прогнозы по всем рынкам"""
