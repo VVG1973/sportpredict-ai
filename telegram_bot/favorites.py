@@ -452,3 +452,17 @@ async def favorites_done(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Ошибка favorites_done: {e}")
         await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+# === ОБРАБОТЧИКИ КНОПОК МЕНЮ ===
+
+@router.message(F.text == "⭐ Избранные команды")
+async def button_favorites(message: Message, state: FSMContext):
+    """Обработчик кнопки 'Избранные команды'"""
+    await cmd_favorites(message, state)
+
+
+@router.message(F.text == "📈 Моя статистика")
+async def button_mystats(message: Message):
+    """Обработчик кнопки 'Моя статистика'"""
+    from telegram_bot.admin_handlers import cmd_mystats
+    await cmd_mystats(message)

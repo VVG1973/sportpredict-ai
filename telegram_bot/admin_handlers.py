@@ -199,15 +199,13 @@ async def btn_admin_stats(message: Message):
 @admin_router.message(F.text == "📊 Моя статистика")
 async def btn_stats(message: Message):
     """Личная статистика (для всех)"""
-    from database.db import Database
-    
-    user_id = message.from_user.id
-    username = message.from_user.username or message.from_user.full_name
-    
-    db = Database()
-    await db.init()
-    stats = await db.get_user_stats(user_id)
-    await db.close()
+    await cmd_mystats(message)
+
+
+@admin_router.message(F.text == "📈 Моя статистика")
+async def btn_stats2(message: Message):
+    """Личная статистика (альтернативная кнопка)"""
+    await cmd_mystats(message)
     
     total_activity = stats["views"] + stats["votes"] * 2 + stats["follows"] * 3
     
@@ -304,6 +302,30 @@ async def btn_vip(message: Message):
         ],
     ])
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@admin_router.message(F.text == "🔥 Экспрессы дня")
+async def btn_express(message: Message):
+    """Экспрессы дня"""
+    await btn_vip(message)
+
+
+@admin_router.message(F.text == "💎 VIP прогнозы")
+async def btn_vip_prognosis(message: Message):
+    """VIP прогнозы"""
+    await btn_vip(message)
+
+
+@admin_router.message(F.text == "👑 Купить VIP")
+async def btn_buy_vip(message: Message):
+    """Купить VIP"""
+    await btn_vip(message)
+
+
+@admin_router.message(F.text == "💳 Купить VIP")
+async def btn_buy_vip2(message: Message):
+    """Купить VIP (альтернативная кнопка)"""
+    await btn_vip(message)
 
 
 @admin_router.message(F.text == "❓ Помощь")

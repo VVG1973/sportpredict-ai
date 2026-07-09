@@ -29,6 +29,7 @@ from analyzers.result_checker import ResultChecker
 from telegram_bot.admin_handlers import admin_router
 from telegram_bot.favorites import router as favorites_router
 from telegram_bot.handlers import router as handlers_router
+from telegram_bot.referral_handlers import router as referral_router
 from telegram_bot.vip_manager import VIPManager, CryptoBotService, SubscriptionManager, SinglePurchaseService
 
 is_pipeline_running = False
@@ -576,6 +577,7 @@ async def main():
     dp.include_router(handlers_router)
     dp.include_router(admin_router)
     dp.include_router(favorites_router)
+    dp.include_router(referral_router)
 
     try:
         await publisher.bot.delete_webhook(drop_pending_updates=True)
