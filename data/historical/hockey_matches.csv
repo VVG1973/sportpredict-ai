@@ -1,0 +1,21 @@
+fixture_id,date,league_id,league_name,home_team,away_team,home_goals,away_goals,result,B365H,B365D,B365A,HS,AS,HST,AST,HC,AC
+855736,2022-11-20,1,World Cup,Qatar,Ecuador,0,2,A,0,0,0,5,6,0,3,1,3
+855735,2022-11-21,1,World Cup,England,Iran,6,2,H,0,0,0,13,8,7,3,8,0
+855734,2022-11-21,1,World Cup,Senegal,Netherlands,0,2,A,0,0,0,15,10,4,3,6,7
+866681,2022-11-21,1,World Cup,USA,Wales,1,1,D,0,0,0,6,7,1,3,5,3
+855737,2022-11-22,1,World Cup,Argentina,Saudi Arabia,1,2,A,0,0,0,15,3,6,2,9,2
+855738,2022-11-22,1,World Cup,Denmark,Tunisia,0,0,D,0,0,0,11,13,5,1,11,9
+855739,2022-11-22,1,World Cup,Mexico,Poland,0,0,D,0,0,0,11,6,4,2,6,5
+871850,2022-11-22,1,World Cup,France,Australia,4,1,H,0,0,0,23,4,7,1,8,1
+855740,2022-11-23,1,World Cup,Morocco,Croatia,0,0,D,0,0,0,8,5,2,2,0,5
+855741,2022-11-23,1,World Cup,Germany,Japan,1,2,A,0,0,0,26,12,9,4,6,6
+871851,2022-11-23,1,World Cup,Spain,Costa Rica,7,0,H,0,0,0,17,0,8,0,5,0
+855742,2022-11-23,1,World Cup,Belgium,Canada,1,0,H,0,0,0,9,22,3,3,4,4
+855743,2022-11-24,1,World Cup,Switzerland,Cameroon,1,0,H,0,0,0,7,8,3,5,11,5
+855744,2022-11-24,1,World Cup,Uruguay,South Korea,0,0,D,0,0,0,10,7,1,0,4,3
+855745,2022-11-24,1,World Cup,Portugal,Ghana,3,2,H,0,0,0,11,9,5,3,3,3
+855746,2022-11-24,1,World Cup,Brazil,Serbia,2,0,H,0,0,0,22,5,8,0,6,4
+866682,2022-11-25,1,World Cup,Wales,Iran,0,2,A,0,0,0,10,21,3,6,2,7
+855747,2022-11-25,1,World Cup,Qatar,Senegal,1,3,A,0,0,0,10,13,3,5,6,6
+855748,2022-11-25,1,World Cup,Netherlands,Ecuador,1,1,D,0,0,0,2,15,1,4,2,5
+855749,2022-11-25,1,World Cup,England,USA,0,0,D,0,0,0,8,10,3,1,3,7
