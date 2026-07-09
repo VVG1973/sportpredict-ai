@@ -364,8 +364,13 @@ class TelegramPublisher:
 
         emoji = SPORT_EMOJI.get(sport.lower().split()[0], "⚽")
 
+        # Тег "High-Confidence" для аномально высокой уверенности
+        high_conf_badge = ""
+        if conf >= 0.80:
+            high_conf_badge = "\n🔥 <b>HIGH-CONFIDENCE</b> — аномально высокая уверенность!\n"
+
         text = (
-            f"🔒 <b>VIP-ПРОГНОЗ</b>\n\n"
+            f"🔒 <b>VIP-ПРОГНОЗ</b>{high_conf_badge}\n"
             f"{emoji} {sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
