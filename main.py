@@ -265,9 +265,9 @@ async def run_pipeline():
         published = 0
 
         # ═══════════════════════════════════════════════════
-        # 1. ОБЫЧНЫЙ КАНАЛ: 1-2 лучших прогноза С исходом
+        # 1. ОБЫЧНЫЙ КАНАЛ: 1 бесплатный прогноз С исходом
         # ═══════════════════════════════════════════════════
-        top_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:2]
+        top_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:1]
         for pred in top_predictions:
             if await publisher.publish_to_channel(pred):
                 published += 1
@@ -282,21 +282,29 @@ async def run_pipeline():
                 )
 
         # ═══════════════════════════════════════════════════
-        # 2. VIP КАНАЛ: 5-6 прогнозов БЕЗ исхода (замаскированы)
+        # 2. VIP КАНАЛ: 5 бесплатных прогнозов БЕЗ исхода
         # ═══════════════════════════════════════════════════
-        vip_blurred = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:6]
+        vip_blurred = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
         for pred in vip_blurred:
             if await publisher.publish_to_vip(pred):
                 published += 1
 
         # ═══════════════════════════════════════════════════
-        # 3. ЭКСПРЕССЫ: в ОБА канала одновременно
+        # 3. ЭКСПРЕССЫ: на ДРУГИХ матчах (не в каналах)
         # ═══════════════════════════════════════════════════
+        # Исключаем матчи, которые уже отправлены в каналы
+        published_fixture_ids = set()
+        for pred in top_predictions + vip_blurred:
+            published_fixture_ids.add(pred["match"]["fixture_id"])
+
         express_candidates.sort(key=lambda x: x["confidence"], reverse=True)
         express_published = 0
 
-        if len(express_candidates) >= 2:
-            events_x2 = express_candidates[:2]
+        # Фильтруем: экспрессы НЕ на матчах из каналов
+        express_available = [e for e in express_candidates if e["match"]["fixture_id"] not in published_fixture_ids]
+
+        if len(express_available) >= 2:
+            events_x2 = express_available[:2]
             events_data = []
             total_odds_x2 = 1.0
             for e in events_x2:
@@ -317,8 +325,8 @@ async def run_pipeline():
             published += 1
             await manager.save_express_group(events_data, total_odds_x2, 199)
 
-        if len(express_candidates) >= 5:
-            events_x3 = express_candidates[2:5]
+        if len(express_available) >= 5:
+            events_x3 = express_available[2:5]
             events_data_3 = []
             total_odds_x3 = 1.0
             for e in events_x3:
