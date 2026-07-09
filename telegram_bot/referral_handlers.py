@@ -67,14 +67,14 @@ async def cmd_start_with_ref(message: Message, command: CommandStart):
                 
                 if not existing_ref:
                     await db.add_referral(referrer_id, new_user_id, new_user_username)
-                    await extend_user_vip(referrer_id, days=1)
-                    
+                    await extend_user_vip(referrer_id, days=7)
+
                     try:
                         await message.bot.send_message(
                             chat_id=referrer_id,
                             text=f"🎉 <b>Новый друг присоединился!</b>\n\n"
                                  f"👤 {new_user_username} зарегистрировался по вашей ссылке\n"
-                                 f"🎁 Вам начислен <b>1 день VIP бесплатно!</b>\n\n"
+                                 f"🎁 Вам начислена <b>неделя VIP бесплатно!</b>\n\n"
                                  f"Используйте /invite чтобы пригласить ещё друзей",
                             parse_mode="HTML"
                         )
@@ -108,8 +108,8 @@ async def cmd_referral(message: Message):
         text += f"🔗 <b>Ваша персональная ссылка:</b>\n<code>{ref_link}</code>\n\n"
         text += f"📊 <b>Ваша статистика:</b>\n"
         text += f"👤 Приглашено друзей: <b>{stats['total']}</b>\n"
-        text += f"🎁 Получено VIP дней: <b>{stats['total']}</b>\n"
-        text += f"💰 Сэкономлено: <b>{stats['total'] * 149}₽</b>\n\n"
+        text += f"🎁 Получено VIP-недель: <b>{stats['total']}</b>\n"
+        text += f"💰 Сэкономлено: <b>{stats['total'] * 7 * 99}₽</b>\n\n"
         
         if referrals:
             text += f"📋 <b>Ваши друзья:</b>\n"
@@ -157,7 +157,7 @@ async def cmd_invite(message: Message):
             f"✅ Статистику и xG\n\n"
             f"📊 <b>Точность прогнозов: ~45-55%</b>\n\n"
             f"👤 <i>Меня зовут {username}, я уже пользуюсь и доволен!</i>\n\n"
-            f"🎁 <b>По моей ссылке ты получишь бонус</b>, а мне дадут VIP день бесплатно!\n\n"
+            f"🎁 <b>По моей ссылке ты получишь бонус</b>, а мне дадут VIP неделю бесплатно!\n\n"
             f"🔗 <b>Жми и заходи:</b>\n{ref_link}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"💡 <i>P.S. Бот полностью бесплатный, есть VIP опции</i>"
@@ -291,9 +291,9 @@ async def callback_ref_stats(callback: CallbackQuery):
         
         text = f"📊 <b>Детальная статистика</b>\n\n"
         text += f"👤 Всего приглашено: <b>{stats['total']}</b>\n"
-        text += f"🎁 VIP дней получено: <b>{stats['total']}</b>\n"
-        text += f"💰 Эквивалент в рублях: <b>{stats['total'] * 149}₽</b>\n\n"
-        text += f"<i>Каждый приглашённый друг = 1 день VIP (149₽)</i>"
+        text += f"🎁 VIP-недель получено: <b>{stats['total']}</b>\n"
+        text += f"💰 Эквивалент в рублях: <b>{stats['total'] * 7 * 99}₽</b>\n\n"
+        text += f"<i>Каждый приглашённый друг = неделя VIP (693₽)</i>"
         
         await callback.message.edit_text(text, parse_mode="HTML")
         await callback.answer()
