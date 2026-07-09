@@ -28,7 +28,7 @@ async def cmd_menu(message: Message):
             ],
             [
                 KeyboardButton(text="👥 Пригласить друга"),
-                KeyboardButton(text="📊 Моя реферальная программа")
+                KeyboardButton(text="📞 Связаться с админом")
             ],
             [
                 KeyboardButton(text="💳 Купить VIP"),
@@ -63,6 +63,9 @@ async def cmd_start(message: Message):
             ],
             [
                 KeyboardButton(text="👑 Купить VIP"),
+                KeyboardButton(text="📞 Связаться с админом")
+            ],
+            [
                 KeyboardButton(text="ℹ️ Помощь")
             ]
         ],
@@ -130,3 +133,56 @@ async def button_today_forecast(message: Message):
                 await message.answer("⚠️ На сегодня нет матчей в выбранных лигах.")
         except Exception as e:
             await message.answer(f"❌ Ошибка генерации: {e}")
+
+# === СВЯЗЬ С АДМИНОМ ===
+
+@router.message(F.text == "📞 Связаться с админом")
+async def button_contact_admin(message: Message):
+    """Пересылка сообщения админу"""
+    from config import settings
+    admin_id = settings.ADMIN_ID
+    
+    text = (
+        "📞 <b>Связь с админом</b>\n\n"
+        "Напишите ваше сообщение, и я перешлю его администратору.\n"
+        "Нажмите кнопку ниже или просто напишите текст:"
+    )
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Написать сообщение", switch_inline_query_current_chat="")]
+    ])
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.message(F.text == "ℹ️ Помощь")
+async def button_help(message: Message):
+    """Помощь"""
+    await cmd_help(message)
+
+
+# === ОБРАБОТКА НЕИЗВЕСТНЫХ СООБЩЕНИЙ ===
+
+@router.message()
+async def unknown_message(message: Message):
+    """Ответ на неизвестные сообщения"""
+    text = (
+        "🤔 Я не понял ваше сообщение.\n\n"
+        "Воспользуйтесь командами:\n"
+        "/start - Главное меню\n"
+        "/help - Помощь\n"
+        "/favorites - Избранные команды\n"
+        "/referral - Реферальная программа\n"
+        "/invite - Пригласить друга\n\n"
+        "Или нажмите кнопку меню 👇"
+    )
+    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔥 Экспрессы дня"), KeyboardButton(text="💎 VIP прогнозы")],
+            [KeyboardButton(text="👑 Купить VIP"), KeyboardButton(text="ℹ️ Помощь")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
