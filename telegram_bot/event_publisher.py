@@ -81,12 +81,12 @@ class RateLimiter:
 def create_bookmakers_keyboard() -> "InlineKeyboardMarkup":
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     bookmakers = [
+        ("Fonbet", "https://www.fonbet.ru"),
+        ("Winline", "https://www.winline.ru"),
+        ("PARI", "https://pari.ru"),
         ("Лига Ставок", "https://www.ligastavok.ru"),
-        ("Фонбет", "https://www.fonbet.ru"),
-        ("1хСтавка", "https://1xstavka.ru"),
-        ("Бетсити", "https://www.betsiti.ru"),
-        ("Винлайн", "https://www.winline.ru"),
-        ("Марафон", "https://www.marathonbet.ru"),
+        ("OLIMPBET", "https://www.olimpbet.ru"),
+        ("BetBoom", "https://betboom.ru"),
     ]
     buttons = []
     for i in range(0, len(bookmakers), 2):
