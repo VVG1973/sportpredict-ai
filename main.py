@@ -358,13 +358,13 @@ async def run_pipeline():
 
 
 async def check_results_job():
-    """╨Я╤А╨╛╨▓╨╡╤А╨║╨░ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В╨╛╨▓ ╨╝╨░╤В╤З╨╡╨╣"""
+    """Проверка результатов матчей"""
     checker = ResultChecker()
     await checker.run()
 
 
 async def send_stats_report():
-    """╨Х╨╢╨╡╨╜╨╡╨┤╨╡╨╗╤М╨╜╤Л╨╣ ╨╛╤В╤З╤С╤В ╨┐╨╛ ╨┐╨╛╨╜╨╡╨┤╨╡╨╗╤М╨╜╨╕╨║╨░╨╝"""
+    """Еженедельный отчёт по понедельникам"""
     db = None
     publisher = None
     try:
@@ -373,16 +373,16 @@ async def send_stats_report():
         stats = await db.get_stats()
         publisher = TelegramPublisher()
         text = (
-            f"ЁЯУК *╨Х╨Ц╨Х╨Э╨Х╨Ф╨Х╨Ы╨м╨Э╨л╨Щ ╨Ю╨в╨з╨Х╨в* ЁЯУК\n\n"
-            f"ЁЯПЯ ╨Т╤Б╨╡╨│╨╛ ╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓: {stats['total']}\n"
-            f"тЬЕ ╨Т╤Л╨╕╨│╤А╤Л╤И╨╡╨╣: {stats['wins']}\n"
-            f"тЭМ ╨Я╤А╨╛╨╕╨│╤А╤Л╤И╨╡╨╣: {stats['losses']}\n"
-            f"тП│ ╨Ю╨╢╨╕╨┤╨░╤О╤В ╤А╨░╤Б╤З╨╡╤В╨░: {stats['pending']}\n"
-            f"ЁЯОп ╨Т╨╕╨╜╤А╨╡╨╣╤В: {stats['winrate']:.1f}%\n"
+            f"\U0001f4ca <b>\u0415\u0416\u0415\u041d\u0415\u0414\u0415\u041b\u042c\u041d\u042b\u0419 \u041e\u0422\u0427\u0401\u0422</b> \U0001f4ca\n\n"
+            f"\u26bd \u0412\u0441\u0435\u0433\u043e \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u043e\u0432: {stats['total']}\n"
+            f"\u2705 \u0412\u044b\u0438\u0433\u0440\u044b\u0448\u0435\u0439: {stats['wins']}\n"
+            f"\u274c \u041f\u0440\u043e\u0438\u0433\u0440\u044b\u0448\u0435\u0439: {stats['losses']}\n"
+            f"\u23f3 \u041e\u0436\u0438\u0434\u0430\u044e\u0442 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430: {stats['pending']}\n"
+            f"\U0001f3af \u0412\u0438\u043d\u0440\u0435\u0439\u0442: {stats['winrate']:.1f}%\n"
         )
-        await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="Markdown")
+        await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"╨Ю╤И╨╕╨▒╨║╨░ ╨│╨╡╨╜╨╡╤А╨░╤Ж╨╕╨╕ ╨╡╨╢╨╡╨╜╨╡╨┤╨╡╨╗╤М╨╜╨╛╨│╨╛ ╨╛╤В╤З╨╡╤В╨░: {e}")
+        logger.error(f"\u041e\u0448\u0438\u0431\u043a\u0430 \u0435\u0436\u0435\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u043e\u0433\u043e \u043e\u0442\u0447\u0451\u0442\u0430: {e}")
     finally:
         # ╨У╨░╤А╨░╨╜╤В╨╕╤А╨╛╨▓╨░╨╜╨╜╨╛╨╡ ╨╖╨░╨║╤А╤Л╤В╨╕╨╡ ╤А╨╡╤Б╤Г╤А╤Б╨╛╨▓
         if publisher:
@@ -518,15 +518,15 @@ async def main():
             stats = await db.get_stats()
             publisher = TelegramPublisher()
             text = (
-                f"ЁЯУК <b>╨б╨в╨Р╨в╨Ш╨б╨в╨Ш╨Ъ╨Р ╨Ч╨Р ╨Т╨з╨Х╨а╨Р</b> ЁЯУК\n\n"
-                f"ЁЯПЯ ╨б╤Л╨│╤А╨░╨╜╨╛ ╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓: {stats['total']}\n"
-                f"тЬЕ ╨Т╤Л╨╕╨│╤А╤Л╤И╨╡╨╣: {stats['wins']}\n"
-                f"тЭМ ╨Я╤А╨╛╨╕╨│╤А╤Л╤И╨╡╨╣: {stats['losses']}\n"
-                f"тП│ ╨Ю╨╢╨╕╨┤╨░╤О╤В ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В╨░: {stats['pending']}\n"
-                f"ЁЯОп <b>╨Т╨╕╨╜╤А╨╡╨╣╤В:</b> {stats['winrate']:.1f}%\n\n"
-                f"тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n"
-                f"ЁЯТб <i>╨Я╨╛╨┤╨┐╨╕╤Б╤Л╨▓╨░╨╣╤В╨╡╤Б╤М ╨╜╨░ VIP ╨┤╨╗╤П ╤Н╨║╤Б╨║╨╗╤О╨╖╨╕╨▓╨╜╤Л╤Е ╨┐╤А╨╛╨│╨╜╨╛╨╖╨╛╨▓!</i>\n\n"
-                f"тЪая╕П <i>╨Ф╨╕╤Б╨║╨╗╨╡╨╣╨╝╨╡╤А: ╨Я╤А╨╛╨│╨╜╨╛╨╖╤Л ╨╜╨╛╤Б╤П╤В ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╨╛╨╜╨╜╤Л╨╣ ╤Е╨░╤А╨░╨║╤В╨╡╤А. ╨Ю╤В╨▓╨╡╤В╤Б╤В╨▓╨╡╨╜╨╜╨░╤П ╨╕╨│╤А╨░. 18+</i>"
+                "\U0001f4ca <b>\u0421\u0422\u0410\u0422\u0418\u0421\u0422\u0418\u041a\u0410 \u0417\u0410 \u0412\u0427\u0415\u0420\u0410</b> \U0001f4ca\n\n"
+                "\u26bd \u0412\u0441\u0435\u0433\u043e \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u043e\u0432: {stats['total']}\n"
+                "\u2705 \u0412\u044b\u0438\u0433\u0440\u044b\u0448\u0435\u0439: {stats['wins']}\n"
+                "\u274c \u041f\u0440\u043e\u0438\u0433\u0440\u044b\u0448\u0435\u0439: {stats['losses']}\n"
+                "\u23f3 \u041e\u0436\u0438\u0434\u0430\u044e\u0442 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u0430: {stats['pending']}\n"
+                "\U0001f3af <b>\u0412\u0438\u043d\u0440\u0435\u0439\u0442:</b> {stats['winrate']:.1f}%\n\n"
+                "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+                "\U0001f446 <i>\u041f\u043e\u0434\u043f\u0438\u0441\u044b\u0432\u0430\u0439\u0441\u044f \u043d\u0430 VIP \u0434\u043b\u044f \u044d\u043a\u0441\u043a\u043b\u044e\u0437\u0438\u0432\u043d\u044b\u0445 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u043e\u0432!</i>\n\n"
+                "\u26a0\ufe0f <i>\u0414\u0438\u0441\u043a\u043b\u0435\u0439\u043c\u0435\u0440: \u041f\u0440\u043e\u0433\u043d\u043e\u0437\u044b \u043d\u043e\u0441\u044f\u0442 \u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u043e\u043d\u043d\u044b\u0439 \u0445\u0430\u0440\u0430\u043a\u0442\u0435\u0440. 18+</i>"
             )
             await publisher.bot.send_message(chat_id=settings.CHANNEL_ID, text=text, parse_mode="HTML")
             logger.info("ЁЯУК ╨Х╨╢╨╡╨┤╨╜╨╡╨▓╨╜╨░╤П ╤Б╤В╨░╤В╨╕╤Б╤В╨╕╨║╨░ ╨╛╤В╨┐╤А╨░╨▓╨╗╨╡╨╜╨░ ╨▓ ╨║╨░╨╜╨░╨╗")
