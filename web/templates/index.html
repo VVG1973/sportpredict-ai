@@ -3,164 +3,260 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SportPredict AI — Прогнозы на спорт от нейросети</title>
+    <title>SportPredict AI — AI-прогнозы на спорт</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <!-- Animated Background -->
+    <div class="bg-animation">
+        <div class="bg-orb bg-orb-1"></div>
+        <div class="bg-orb bg-orb-2"></div>
+        <div class="bg-orb bg-orb-3"></div>
+    </div>
+
     <div class="container">
-        <header class="header">
-            <h1>🤖 SportPredict AI</h1>
-            <p class="subtitle">Прогнозы на спорт от нейросети</p>
+        <!-- Hero Section -->
+        <header class="hero">
+            <div class="hero-badge">🤖 AI-ПРОГНОЗЫ</div>
+            <h1>SportPredict<span class="accent">AI</span></h1>
+            <p class="hero-subtitle">Умные прогнозы на спорт на основе нейросетей</p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span class="hero-stat-value">{{ stats.total }}</span>
+                    <span class="hero-stat-label">Прогнозов</span>
+                </div>
+                <div class="hero-stat-divider"></div>
+                <div class="hero-stat">
+                    <span class="hero-stat-value">{{ stats.winrate }}%</span>
+                    <span class="hero-stat-label">Винрейт</span>
+                </div>
+                <div class="hero-stat-divider"></div>
+                <div class="hero-stat">
+                    <span class="hero-stat-value">6</span>
+                    <span class="hero-stat-label">Букмекеров</span>
+                </div>
+            </div>
+            <div class="hero-buttons">
+                <a href="https://t.me/spanalyt_bot" class="btn btn-primary">
+                    <span class="btn-icon">👑</span> Открыть VIP-бот
+                </a>
+                <a href="#predictions" class="btn btn-secondary">
+                    <span class="btn-icon">📊</span> Смотреть прогнозы
+                </a>
+            </div>
         </header>
 
+        <!-- Stats Cards -->
         <section class="stats-section">
-            <h2>📊 Общая статистика</h2>
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card stat-card-winrate">
+                    <div class="stat-icon">🎯</div>
                     <div class="stat-value">{{ stats.winrate }}%</div>
                     <div class="stat-label">Винрейт</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" style="width: {{ stats.winrate }}%"></div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ stats.roi }}%</div>
-                    <div class="stat-label">ROI</div>
-                </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-total">
+                    <div class="stat-icon">📋</div>
                     <div class="stat-value">{{ stats.total }}</div>
                     <div class="stat-label">Всего прогнозов</div>
                 </div>
-                <div class="stat-card success">
+                <div class="stat-card stat-card-wins">
+                    <div class="stat-icon">✅</div>
                     <div class="stat-value">{{ stats.wins }}</div>
                     <div class="stat-label">Выигрышей</div>
                 </div>
-                <div class="stat-card danger">
+                <div class="stat-card stat-card-losses">
+                    <div class="stat-icon">❌</div>
                     <div class="stat-value">{{ stats.losses }}</div>
                     <div class="stat-label">Проигрышей</div>
                 </div>
-                <div class="stat-card warning">
+                <div class="stat-card stat-card-pending">
+                    <div class="stat-icon">⏳</div>
                     <div class="stat-value">{{ stats.pending }}</div>
                     <div class="stat-label">Ожидают</div>
                 </div>
+                <div class="stat-card stat-card-roi">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-value">{{ stats.roi }}%</div>
+                    <div class="stat-label">ROI</div>
+                </div>
             </div>
         </section>
 
+        <!-- Features -->
         <section class="features-section">
-            <h2>🎯 Почему выбирают нас</h2>
+            <div class="section-header">
+                <span class="section-badge">ПРЕИМУЩЕСТВА</span>
+                <h2>Почему выбирают нас</h2>
+            </div>
             <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon">🧠</div>
+                    <div class="feature-icon-wrap">🧠</div>
                     <h3>ML-модель</h3>
-                    <p>Обучена на 22000+ реальных матчах</p>
+                    <p>Обучена на 22,000+ матчей с точностью до 74%</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">🎮</div>
-                    <h3>8 видов спорта</h3>
-                    <p>Футбол, теннис, баскетбол, хоккей, CS2, Dota 2, MMA</p>
+                    <div class="feature-icon-wrap">🏒</div>
+                    <h3>6 видов спорта</h3>
+                    <p>Футбол, хоккей, теннис, CS2, Dota 2 и другие</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">📈</div>
-                    <h3>Прозрачность</h3>
-                    <p>Открытая статистика всех прогнозов</p>
+                    <div class="feature-icon-wrap">🔒</div>
+                    <h3>VIP-прогнозы</h3>
+                    <p>5 эксклюзивных прогнозов ежедневно в VIP-канале</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">⚡</div>
-                    <h3>Ежедневно</h3>
-                    <p>Новые прогнозы каждый день в 8:00 МСК</p>
+                    <div class="feature-icon-wrap">🔥</div>
+                    <h3>Экспрессы</h3>
+                    <p>Готовые экспрессы x2 и x3 с высоким коэффициентом</p>
                 </div>
             </div>
         </section>
 
-        <section class="predictions-section">
-            <h2>📋 Все прогнозы ({{ total_count }} всего)</h2>
-            
+        <!-- Predictions Table -->
+        <section class="predictions-section" id="predictions">
+            <div class="section-header">
+                <span class="section-badge">ПРОГНОЗЫ</span>
+                <h2>История прогнозов ({{ total_count }})</h2>
+            </div>
+
             {% if total_pages > 1 %}
             <div class="pagination">
                 {% if page > 1 %}
-                    <a href="?page={{ page - 1 }}" class="page-link">← Назад</a>
+                    <a href="?page={{ page - 1 }}" class="page-btn page-prev">←</a>
                 {% endif %}
-                
+
                 {% for p in range(1, total_pages + 1) %}
                     {% if p == page %}
-                        <span class="page-link active">{{ p }}</span>
-                    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
-                        <a href="?page={{ p }}" class="page-link">{{ p }}</a>
-                    {% elif p == 4 or p == total_pages - 3 %}
-                        <span class="page-link">...</span>
+                        <span class="page-btn page-active">{{ p }}</span>
+                    {% elif p <= 2 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+                        <a href="?page={{ p }}" class="page-btn">{{ p }}</a>
+                    {% elif p == 3 or p == total_pages - 2 %}
+                        <span class="page-dots">...</span>
                     {% endif %}
                 {% endfor %}
-                
+
                 {% if page < total_pages %}
-                    <a href="?page={{ page + 1 }}" class="page-link">Вперёд →</a>
+                    <a href="?page={{ page + 1 }}" class="page-btn page-next">→</a>
                 {% endif %}
             </div>
             {% endif %}
-            
-            <div class="predictions-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Дата</th>
-                            <th>Матч</th>
-                            <th>Прогноз</th>
-                            <th>Уверенность</th>
-                            <th>Коэф</th>
-                            <th>Результат</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for pred in predictions %}
-                        <tr>
-                            <td>{{ pred.date }}</td>
-                            <td><strong>{{ pred.home_team }}</strong> — {{ pred.away_team }}</td>
-                            <td><strong>{{ pred.prediction }}</strong></td>
-                            <td>{{ pred.confidence }}%</td>
-                            <td>{{ pred.odds }}</td>
-                            <td>
-                                {% if pred.result == 'win' %}
-                                    <span class="result-win">✅ Выигрыш</span>
-                                {% elif pred.result == 'loss' %}
-                                    <span class="result-loss">❌ Проигрыш</span>
-                                {% else %}
-                                    <span class="result-pending">⏳ Ожидает</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="6" style="text-align: center; padding: 30px;">
-                                <em>Пока нет прогнозов. Первые появятся после 8:00 МСК.</em>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+
+            <div class="predictions-list">
+                {% for pred in predictions %}
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <span class="prediction-date">{{ pred.date }}</span>
+                        <span class="prediction-result {% if pred.result == 'win' %}result-win{% elif pred.result == 'loss' %}result-loss{% else %}result-pending{% endif %}">
+                            {% if pred.result == 'win' %}✅ Выигрыш{% elif pred.result == 'loss' %}❌ Проигрыш{% else %}⏳ Ожидает{% endif %}
+                        </span>
+                    </div>
+                    <div class="prediction-match">
+                        <span class="team-home">{{ pred.home_team }}</span>
+                        <span class="vs">VS</span>
+                        <span class="team-away">{{ pred.away_team }}</span>
+                    </div>
+                    <div class="prediction-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Прогноз</span>
+                            <span class="detail-value detail-prediction">{{ pred.prediction }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Уверенность</span>
+                            <span class="detail-value">{{ pred.confidence }}%</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Коэф</span>
+                            <span class="detail-value detail-odds">{{ pred.odds }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <p>Пока нет прогнозов. Первые появятся после 8:00 МСК.</p>
+                </div>
+                {% endfor %}
             </div>
-            
+
             {% if total_pages > 1 %}
-            <div class="pagination" style="margin-top: 20px;">
+            <div class="pagination" style="margin-top: 30px;">
                 {% if page > 1 %}
-                    <a href="?page={{ page - 1 }}" class="page-link">← Назад</a>
+                    <a href="?page={{ page - 1 }}" class="page-btn page-prev">←</a>
                 {% endif %}
-                
-                <span class="page-info">Страница {{ page }} из {{ total_pages }}</span>
-                
+                <span class="page-info">{{ page }} / {{ total_pages }}</span>
                 {% if page < total_pages %}
-                    <a href="?page={{ page + 1 }}" class="page-link">Вперёд →</a>
+                    <a href="?page={{ page + 1 }}" class="page-btn page-next">→</a>
                 {% endif %}
             </div>
             {% endif %}
         </section>
 
-        <section class="cta-section">
-            <h2>🚀 Начните выигрывать сегодня!</h2>
-            <p>Подпишитесь на наш Telegram-канал и получайте прогнозы первыми</p>
-            <a href="https://t.me/spanalyt_bot" class="cta-button">
-                👑 Открыть Telegram-бот
-            </a>
+        <!-- Bookmakers Section -->
+        <section class="bookmakers-section">
+            <div class="section-header">
+                <span class="section-badge">СТАВЬТЕ</span>
+                <h2>Наши букмекеры</h2>
+            </div>
+            <div class="bookmakers-grid">
+                <a href="https://www.fonbet.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">Fonbet</span>
+                </a>
+                <a href="https://www.winline.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">Winline</span>
+                </a>
+                <a href="https://pari.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">PARI</span>
+                </a>
+                <a href="https://www.ligastavok.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">Лига Ставок</span>
+                </a>
+                <a href="https://www.olimpbet.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">OLIMPBET</span>
+                </a>
+                <a href="https://betboom.ru" class="bookmaker-card" target="_blank">
+                    <span class="bookmaker-name">BetBoom</span>
+                </a>
+            </div>
         </section>
 
+        <!-- CTA Section -->
+        <section class="cta-section">
+            <div class="cta-content">
+                <h2>Начните выигрывать сегодня</h2>
+                <p>Подпишитесь на наш Telegram-бот и получайте AI-прогнозы первыми</p>
+                <div class="cta-features">
+                    <span>✅ 1 бесплатный прогноз в день</span>
+                    <span>✅ AI-анализ каждого матча</span>
+                    <span>✅ Кнопки букмекеров</span>
+                </div>
+                <a href="https://t.me/spanalyt_bot" class="btn btn-primary btn-large">
+                    👑 Открыть Telegram-бот
+                </a>
+            </div>
+        </section>
+
+        <!-- Footer -->
         <footer class="footer">
-            <p>⚠️ Дисклеймер: Прогнозы носят информационный характер. Ответственная игра. 18+</p>
-            <p>&copy; 2026 SportPredict AI. Все права защищены.</p>
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="footer-logo">SportPredict<span class="accent">AI</span></span>
+                    <p>AI-прогнозы на спорт</p>
+                </div>
+                <div class="footer-links">
+                    <a href="https://t.me/spanalyt_bot">Telegram-бот</a>
+                    <a href="#predictions">Прогнозы</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>⚠️ Прогнозы носят информационный характер. Ответственная игра. 18+</p>
+                <p>© 2026 SportPredict AI</p>
+            </div>
         </footer>
     </div>
 </body>
