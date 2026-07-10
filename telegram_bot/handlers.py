@@ -159,30 +159,3 @@ async def button_contact_admin(message: Message):
 async def button_help(message: Message):
     """Помощь"""
     await cmd_help(message)
-
-
-# === ОБРАБОТКА НЕИЗВЕСТНЫХ СООБЩЕНИЙ ===
-
-@router.message()
-async def unknown_message(message: Message):
-    """Ответ на неизвестные сообщения"""
-    text = (
-        "🤔 Я не понял ваше сообщение.\n\n"
-        "Воспользуйтесь командами:\n"
-        "/start - Главное меню\n"
-        "/help - Помощь\n"
-        "/favorites - Избранные команды\n"
-        "/referral - Реферальная программа\n"
-        "/invite - Пригласить друга\n\n"
-        "Или нажмите кнопку меню 👇"
-    )
-    
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔥 Экспрессы дня"), KeyboardButton(text="💎 VIP прогнозы")],
-            [KeyboardButton(text="👑 Купить VIP"), KeyboardButton(text="ℹ️ Помощь")]
-        ],
-        resize_keyboard=True
-    )
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
