@@ -228,14 +228,24 @@ class HybridSportsParser:
         """Получает реальные матчи: футбол + хоккей + теннис + киберспорт"""
         all_matches = []
 
-        # 1. Футбол (TheSportsDB)
+        # 1. Футбол (API-Football - основной источник)
         try:
-            football = await self.real_parser.fetch_upcoming_matches(count=10)
+            from data_collectors.api_football_parser import APIFootballParser
+            api_parser = APIFootballParser()
+            football = await api_parser.get_matches_for_dates(days_ahead=3)
             all_matches.extend(football)
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка футбола: {e}")
+            logger.warning(f"⚠️ Ошибка API-Football (футбол): {e}")
 
-        # 2. Хоккей (NHL API - бесплатный)
+        # 2. Футбол (TheSportsDB - запасной источник)
+        if len([m for m in all_matches if 'футбол' in m.get('sport', '').lower()]) < 3:
+            try:
+                football = await self.real_parser.fetch_upcoming_matches(count=10)
+                all_matches.extend(football)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка TheSportsDB: {e}")
+
+        # 3. Хоккей (NHL API - бесплатный)
         try:
             from data_collectors.nhl_parser import NHLParser
             nhl_parser = NHLParser()
@@ -243,15 +253,6 @@ class HybridSportsParser:
             all_matches.extend(hockey_matches)
         except Exception as e:
             logger.warning(f"⚠️ Ошибка NHL: {e}")
-
-        # 3. Теннис (Tennis Abstract - бесплатный)
-        try:
-            from data_collectors.tennis_abstract_parser import TennisAbstractParser
-            tennis_parser = TennisAbstractParser()
-            tennis_matches = await tennis_parser.get_recent_matches(days_back=7)
-            all_matches.extend(tennis_matches[:5])  # Ограничиваем чтобы не перегрузить
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка тенниса: {e}")
 
         # 4. Киберспорт (Pandascore)
         try:
