@@ -13,7 +13,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = Router()
-db = Database()
+
+
+async def _get_db():
+    """Создаёт и инициализирует подключение к БД"""
+    db = Database()
+    await db.init()
+    return db
 
 
 # === FSM для ручного ввода команды ===
@@ -70,7 +76,7 @@ async def cmd_favorites(message: Message, state: FSMContext):
     await state.clear()
     
     try:
-        await db.init()
+        db = await _get_db()
         favorites = await db.get_user_favorites(message.from_user.id)
         
         if not favorites:
@@ -177,7 +183,7 @@ async def cmd_invite_placeholder(message: Message):
 async def show_leagues(callback: CallbackQuery):
     """Показать список лиг для выбора"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = callback.from_user.id
         favorites = await db.get_user_favorites(user_id)
         
@@ -201,7 +207,7 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
     """Вернуться в главное меню favorites"""
     await state.clear()
     try:
-        await db.init()
+        db = await _get_db()
         favorites = await db.get_user_favorites(callback.from_user.id)
         
         if not favorites:
@@ -224,7 +230,7 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
 async def show_league_teams(callback: CallbackQuery):
     """Показать команды из выбранной лиги"""
     try:
-        await db.init()
+        db = await _get_db()
         league_name = callback.data.split(":", 1)[1]
         user_id = callback.from_user.id
         favorites = await db.get_user_favorites(user_id)
@@ -248,7 +254,7 @@ async def show_league_teams(callback: CallbackQuery):
 async def toggle_favorite(callback: CallbackQuery):
     """Добавить/удалить команду из избранного"""
     try:
-        await db.init()
+        db = await _get_db()
         team = callback.data.split(":", 1)[1]
         user_id = callback.from_user.id
         
@@ -284,7 +290,7 @@ async def toggle_favorite(callback: CallbackQuery):
 async def start_manual_input(callback: CallbackQuery, state: FSMContext):
     """Начать процесс ручного ввода команды"""
     try:
-        await db.init()
+        db = await _get_db()
         favorites = await db.get_user_favorites(callback.from_user.id)
         
         if len(favorites) >= MAX_FAVORITES:
@@ -323,7 +329,7 @@ async def cancel_manual_input(callback: CallbackQuery, state: FSMContext):
     """Отменить ручной ввод"""
     await state.clear()
     try:
-        await db.init()
+        db = await _get_db()
         favorites = await db.get_user_favorites(callback.from_user.id)
         
         text = f"⭐ <b>Ваши избранные команды ({len(favorites)}/{MAX_FAVORITES}):</b>\n\n"
@@ -342,7 +348,7 @@ async def cancel_manual_input(callback: CallbackQuery, state: FSMContext):
 async def process_team_name(message: Message, state: FSMContext):
     """Обработать введённое пользователем название команды"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = message.from_user.id
         
         # Получаем и валидируем введённое название
@@ -436,7 +442,7 @@ async def favorites_done(callback: CallbackQuery, state: FSMContext):
     """Завершить выбор команд"""
     await state.clear()
     try:
-        await db.init()
+        db = await _get_db()
         favorites = await db.get_user_favorites(callback.from_user.id)
         
         if favorites:

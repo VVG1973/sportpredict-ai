@@ -15,7 +15,7 @@ admin_router = Router()
 async def _get_db():
     """Создаёт и инициализирует подключение к БД"""
     from database.db import Database
-    db = Database()
+    db = await _get_db()
     await db.init()
     return db
 
@@ -174,7 +174,7 @@ async def btn_admin_stats(message: Message):
         return
     
     from database.db import Database
-    db = Database()
+    db = await _get_db()
     await db.init()
     stats = await db.get_stats()
     await db.close()
@@ -246,7 +246,7 @@ async def btn_myteams(message: Message):
     from database.db import Database
     
     user_id = message.from_user.id
-    db = Database()
+    db = await _get_db()
     await db.init()
     teams = await db.get_user_follows(user_id)
     await db.close()
@@ -361,7 +361,7 @@ async def unfollow_from_menu(callback: CallbackQuery):
     team_name = callback.data.replace("unfollow:", "")
     user_id = callback.from_user.id
     
-    db = Database()
+    db = await _get_db()
     await db.init()
     await db.unfollow_team(user_id, team_name)
     teams = await db.get_user_follows(user_id)
@@ -411,7 +411,7 @@ async def cmd_stats(message: Message):
         return
     
     from database.db import Database
-    db = Database()
+    db = await _get_db()
     await db.init()
     stats = await db.get_stats()
     await db.close()
@@ -478,7 +478,7 @@ async def cmd_follow(message: Message):
     user_id = message.from_user.id
     username = message.from_user.username or "unknown"
     
-    db = Database()
+    db = await _get_db()
     await db.init()
     
     if await db.follow_team(user_id, username, team_name):
@@ -511,7 +511,7 @@ async def cmd_unfollow(message: Message):
     team_name = parts[1].strip()
     user_id = message.from_user.id
     
-    db = Database()
+    db = await _get_db()
     await db.init()
     await db.unfollow_team(user_id, team_name)
     teams = await db.get_user_follows(user_id)
@@ -540,7 +540,7 @@ async def cmd_myteams(message: Message):
     from database.db import Database
     
     user_id = message.from_user.id
-    db = Database()
+    db = await _get_db()
     await db.init()
     teams = await db.get_user_follows(user_id)
     await db.close()
@@ -569,7 +569,7 @@ async def cmd_mystats(message: Message):
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.full_name
     
-    db = Database()
+    db = await _get_db()
     await db.init()
     stats = await db.get_user_stats(user_id)
     await db.close()

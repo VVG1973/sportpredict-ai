@@ -11,13 +11,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = Router()
-db = Database()
+
+
+async def _get_db():
+    """Создаёт и инициализирует подключение к БД"""
+    db = Database()
+    db = await _get_db()
+    return db
 
 
 async def extend_user_vip(user_id: int, days: int = 1):
     """Продлевает VIP пользователю на указанное количество дней"""
     try:
-        await db.init()
+        db = await _get_db()
         
         cursor = await db.conn.execute(
             "SELECT expires_at FROM subscriptions WHERE user_id = ? AND status = 'active'",
@@ -62,7 +68,7 @@ async def cmd_start_with_ref(message: Message, command: CommandStart):
             new_user_username = message.from_user.username or f"user_{new_user_id}"
             
             if referrer_id != new_user_id:
-                await db.init()
+                db = await _get_db()
                 existing_ref = await db.get_referral_by_user(new_user_id)
                 
                 if not existing_ref:
@@ -94,7 +100,7 @@ async def cmd_start_with_ref(message: Message, command: CommandStart):
 async def cmd_referral(message: Message):
     """Показать реферальную программу"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = message.from_user.id
         
         stats = await db.get_referral_stats(user_id)
@@ -140,7 +146,7 @@ async def cmd_referral(message: Message):
 async def cmd_invite(message: Message):
     """Создать персональное приглашение для отправки другу"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name or "друг"
         
@@ -195,7 +201,7 @@ async def cmd_invite(message: Message):
 async def create_invite_callback(callback: CallbackQuery):
     """Обработчик кнопки 'Создать приглашение'"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = callback.from_user.id
         username = callback.from_user.username or callback.from_user.first_name or "друг"
         
@@ -234,7 +240,7 @@ async def create_invite_callback(callback: CallbackQuery):
 async def copy_invite_callback(callback: CallbackQuery):
     """Показать текст для копирования"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = callback.from_user.id
         username = callback.from_user.username or callback.from_user.first_name or "друг"
         
@@ -261,7 +267,7 @@ async def copy_invite_callback(callback: CallbackQuery):
 async def show_ref_link_callback(callback: CallbackQuery):
     """Показать реферальную ссылку"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = callback.from_user.id
         bot_info = await callback.bot.get_me()
         ref_link = f"https://t.me/{bot_info.username}?start=ref_{user_id}"
@@ -284,7 +290,7 @@ async def show_ref_link_callback(callback: CallbackQuery):
 async def callback_ref_stats(callback: CallbackQuery):
     """Показать детальную статистику рефералов"""
     try:
-        await db.init()
+        db = await _get_db()
         user_id = callback.from_user.id
         
         stats = await db.get_referral_stats(user_id)
