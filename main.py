@@ -158,8 +158,8 @@ async def run_pipeline():
 
             # Извлекаем коэффициенты из данных матча
             match_odds = m.get("odds", {})
-            if isinstance(match_odds, (int, float)):
-                match_odds = {"home": match_odds, "draw": 0, "away": 0}
+            if not isinstance(match_odds, dict):
+                match_odds = {"home": 2.0, "draw": 3.0, "away": 3.0}
 
             # Определяем вид спорта
             sport_lower = m.get("sport", "").lower()
@@ -203,9 +203,9 @@ async def run_pipeline():
                     "away_team": away_team,
                     "match_date": str(match_date),
                     "odds": match_odds,
-                    "B365H": match_odds.get('home', 0) or m.get("odds", {}).get('home', 0),
-                    "B365D": match_odds.get('draw', 0) or m.get("odds", {}).get('draw', 0),
-                    "B365A": match_odds.get('away', 0) or m.get("odds", {}).get('away', 0),
+                    "B365H": match_odds.get('home', 2.0),
+                    "B365D": match_odds.get('draw', 3.0),
+                    "B365A": match_odds.get('away', 3.0),
                 }
                 
                 if historical_df is not None:
@@ -268,7 +268,9 @@ async def run_pipeline():
         # ═══════════════════════════════════════════════════
         # 1. ОБЫЧНЫЙ КАНАЛ: 1 бесплатный прогноз С исходом
         # ═══════════════════════════════════════════════════
-        top_predictions = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:1]
+        # Берём лучший прогноз из всех (VIP + regular)
+        all_predictions = vip_predictions + regular_predictions
+        top_predictions = sorted(all_predictions, key=lambda x: x["confidence"], reverse=True)[:1]
         for pred in top_predictions:
             if await publisher.publish_to_channel(pred):
                 published += 1
@@ -285,7 +287,7 @@ async def run_pipeline():
         # ═══════════════════════════════════════════════════
         # 2. VIP КАНАЛ: 5 бесплатных прогнозов БЕЗ исхода
         # ═══════════════════════════════════════════════════
-        vip_blurred = sorted(vip_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
+        vip_blurred = sorted(all_predictions, key=lambda x: x["confidence"], reverse=True)[:5]
         for pred in vip_blurred:
             if await publisher.publish_to_vip(pred):
                 published += 1

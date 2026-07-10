@@ -91,6 +91,21 @@ class PredictionModel:
         result["value"] = 0.0
         return result
 
+    async def predict_esports(self, match_data: Dict, game: str = "csgo") -> Dict:
+        """Прогноз для киберспортивных матчей"""
+        if self.model and hasattr(self.model, 'predict_esports'):
+            return await self.model.predict_esports(match_data, game)
+        
+        # Fallback: простой прогноз по коэффициентам
+        odds = match_data.get("odds", {})
+        home_odds = odds.get("home", 2.0) if isinstance(odds, dict) else 2.0
+        away_odds = odds.get("away", 2.0) if isinstance(odds, dict) else 2.0
+        
+        if home_odds < away_odds:
+            return {"prediction": "H", "confidence": 0.55}
+        else:
+            return {"prediction": "A", "confidence": 0.55}
+
     def get_accuracy(self) -> float:
         if isinstance(self.accuracy, dict):
             return sum(self.accuracy.values()) / len(self.accuracy) if self.accuracy else 0
