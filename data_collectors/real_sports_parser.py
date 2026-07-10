@@ -235,16 +235,25 @@ class HybridSportsParser:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка футбола: {e}")
 
-        # 2. Хоккей + Теннис (API-Football)
+        # 2. Хоккей (NHL API - бесплатный)
         try:
-            from data_collectors.api_football_parser import APIFootballParser
-            api_parser = APIFootballParser()
-            api_matches = await api_parser.get_matches_for_dates(days_ahead=3)
-            all_matches.extend(api_matches)
+            from data_collectors.nhl_parser import NHLParser
+            nhl_parser = NHLParser()
+            hockey_matches = await nhl_parser.get_upcoming_matches(days_ahead=2)
+            all_matches.extend(hockey_matches)
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка API-Football (хоккей/теннис): {e}")
+            logger.warning(f"⚠️ Ошибка NHL: {e}")
 
-        # 3. Киберспорт (Pandascore)
+        # 3. Теннис (Tennis Abstract - бесплатный)
+        try:
+            from data_collectors.tennis_abstract_parser import TennisAbstractParser
+            tennis_parser = TennisAbstractParser()
+            tennis_matches = await tennis_parser.get_recent_matches(days_back=7)
+            all_matches.extend(tennis_matches[:5])  # Ограничиваем чтобы не перегрузить
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка тенниса: {e}")
+
+        # 4. Киберспорт (Pandascore)
         try:
             from data_collectors.esports_parser import EsportsParser
             esports_parser = EsportsParser(min_confidence=self.min_confidence)
