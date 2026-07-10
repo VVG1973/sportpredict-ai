@@ -83,11 +83,12 @@ for lid in ESPORTS_LEAGUES:
 
 class APIFootballParser:
     """Парсер матчей из API-Football"""
-    
+
     def __init__(self):
-        self.api_key = os.getenv("API_FOOTBALL_KEY")
+        from config import settings
+        self.api_key = settings.API_FOOTBALL_KEY
         if not self.api_key:
-            logger.warning("⚠️ API_FOOTBALL_KEY не найден в переменных окружения")
+            logger.warning("⚠️ API_FOOTBALL_KEY не найден в конфигурации")
         
         self.base_url = "https://v3.football.api-sports.io"
         self.headers = {
