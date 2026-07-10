@@ -16,7 +16,7 @@ router = Router()
 async def _get_db():
     """Создаёт и инициализирует подключение к БД"""
     db = Database()
-    db = await _get_db()
+    await db.init()
     return db
 
 
