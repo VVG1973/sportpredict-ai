@@ -19,36 +19,25 @@ async def cmd_menu(message: Message):
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="📊 Прогноз на сегодня"),
-                KeyboardButton(text="💎 VIP прогнозы")
-            ],
-            [
-                KeyboardButton(text="📈 Моя статистика"),
-                KeyboardButton(text="⭐ Избранные команды")
-            ],
-            [
-                KeyboardButton(text="👥 Пригласить друга"),
+                KeyboardButton(text="👑 Купить VIP"),
                 KeyboardButton(text="📞 Связаться с админом")
             ],
             [
-                KeyboardButton(text="💳 Купить VIP"),
                 KeyboardButton(text="ℹ️ Помощь")
             ]
         ],
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    
+
     text = (
         "🎯 <b>Главное меню</b>\n\n"
         "Выберите действие:\n\n"
-        "📊 Прогнозы - AI-прогнозы на сегодня\n"
-        "💎 VIP - Точные прогнозы (70%+)\n"
-        "⭐ Избранные - Ваши любимые команды\n"
-        "👥 Пригласить друга - Получи VIP бесплатно!\n"
-        "💳 VIP подписка - Доступ к премиум прогнозам"
+        "👑 Купить VIP - Доступ к премиум прогнозам\n"
+        "📞 Связаться с админом - Задать вопрос\n"
+        "ℹ️ Помощь - Справка по командам"
     )
-    
+
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
@@ -57,10 +46,6 @@ async def cmd_start(message: Message):
     """Приветствие с продажей VIP и экспрессов"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text="🔥 Экспрессы дня"),
-                KeyboardButton(text="💎 VIP прогнозы")
-            ],
             [
                 KeyboardButton(text="👑 Купить VIP"),
                 KeyboardButton(text="📞 Связаться с админом")

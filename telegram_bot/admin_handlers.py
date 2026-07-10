@@ -459,8 +459,9 @@ async def cmd_publish(message: Message):
 
 @admin_router.message(Command("follow"))
 async def cmd_follow(message: Message):
+    """Подписка на команду (доступно всем)"""
     from database.db import Database
-    
+
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.answer(
@@ -473,33 +474,32 @@ async def cmd_follow(message: Message):
             parse_mode="HTML"
         )
         return
-    
+
     team_name = parts[1].strip()
     user_id = message.from_user.id
     username = message.from_user.username or "unknown"
-    
+
     db = await _get_db()
-    await db.init()
-    
+
     if await db.follow_team(user_id, username, team_name):
         teams = await db.get_user_follows(user_id)
         teams_text = "\n".join([f"• {t}" for t in teams])
-        
-        menu = get_menu_for_user(user_id)
+
         await message.answer(
             f"✅ <b>Вы подписались на {team_name}!</b>\n\n"
-            f"📋 <b>Ваши команды ({len(teams)}):</b>\n{teams_text}",
-            parse_mode="HTML",
-            reply_markup=menu
+            f"📋 <b>Ваши команды ({len(teams)}):</b>\n{teams_text}\n\n"
+            f"🔔 Мы пришлём прогноз за 1 час до матча вашей команды!",
+            parse_mode="HTML"
         )
-    
-    await db.close()
+    else:
+        await message.answer(f"❌ Не удалось подписаться на {team_name}")
 
 
 @admin_router.message(Command("unfollow"))
 async def cmd_unfollow(message: Message):
+    """Отписка от команды (доступно всем)"""
     from database.db import Database
-    
+
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.answer(
@@ -507,15 +507,13 @@ async def cmd_unfollow(message: Message):
             parse_mode="HTML"
         )
         return
-    
+
     team_name = parts[1].strip()
     user_id = message.from_user.id
-    
+
     db = await _get_db()
-    await db.init()
     await db.unfollow_team(user_id, team_name)
     teams = await db.get_user_follows(user_id)
-    await db.close()
     
     menu = get_menu_for_user(user_id)
     if teams:
