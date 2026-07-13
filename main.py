@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Dispatcher
 from config import settings
 
-# ╨Э╨░╤Б╤В╤А╨╛╨╣╨║╨░ ╨╗╨╛╨│╨╕╤А╨╛╨▓╨░╨╜╨╕╤П
+# Логирование
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -17,10 +17,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from data_collectors.real_sports_parser import HybridSportsParser as MultiSportParser
-logger.info("ЁЯзк ╨Ч╨Р╨Я╨г╨б╨Ъ ╨Т ╨а╨Х╨Ц╨Ш╨Ь╨Х ╨У╨Ш╨С╨а╨Ш╨Ф╨Э╨л╨е ╨Ф╨Р╨Э╨Э╨л╨е (╨а╨╡╨░╨╗╤М╨╜╤Л╨╡ + Mock)")
+logger.info("🚀 ЗАПУСК В РЕЖИМЕ РАЗРАБОТЧИКА (реальные + Mock)")
 
 from ml_models.prediction_model import PredictionModel
-# ╨Ш╨╜╨╕╤Ж╨╕╨░╨╗╨╕╨╖╨╕╤А╤Г╨╡╨╝ ML-╨╝╨╛╨┤╨╡╨╗╤М ╨╛╨┤╨╕╨╜ ╤А╨░╨╖ ╨┐╤А╨╕ ╤Б╤В╨░╤А╤В╨╡
+# Инициализируем ML-модель один раз при старте
 ml_model = PredictionModel()
 
 from telegram_bot.event_publisher import TelegramPublisher
@@ -44,7 +44,7 @@ logger.info("Инициализация ML-модели завершена")
 
 async def create_and_publish_express(candidates, count, price, manager, publisher, express_label):
     """
-    ЁЯТО ╨Я╨Ю╨Ь╨Ю╨й╨Э╨Ш╨Ъ (DRY): ╨б╨╛╨▒╨╕╤А╨░╨╡╤В, ╤Б╨╛╤Е╤А╨░╨╜╤П╨╡╤В ╨▓ ╨С╨Ф ╨╕ ╨┐╤Г╨▒╨╗╨╕╨║╤Г╨╡╤В ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б ╨▓ ╨║╨░╨╜╨░╨╗.
+    🔥 ПРИНЦИП (DRY): ╨б╨╛╨▒╨╕╤А╨░╨╡╤В, ╤Б╨╛╤Е╤А╨░╨╜╤П╨╡╤В ╨▓ ╨С╨Ф ╨╕ ╨┐╤Г╨▒╨╗╨╕╨║╤Г╨╡╤В ╤Н╨║╤Б╨┐╤А╨╡╤Б╤Б ╨▓ ╨║╨░╨╜╨░╨╗.
     ╨Я╨╛╨╝╨╛╨│╨░╨╡╤В ╨╕╨╖╨▒╨╡╨╢╨░╤В╤М ╨┤╤Г╨▒╨╗╨╕╤А╨╛╨▓╨░╨╜╨╕╤П ╨║╨╛╨┤╨░ ╨┤╨╗╤П ╨н╨║╤Б╨┐╤А╨╡╤Б╤Б╨╛╨▓ ╤А╨░╨╖╨╜╨╛╨│╨╛ ╤А╨░╨╖╨╝╨╡╤А╨░.
     """
     express_events = candidates[:count]
@@ -234,7 +234,7 @@ async def run_pipeline():
             else:
                 predicted_outcome = m.get("outcome", "П1")
 
-            # ЁЯЫбя╕П ╨Ш╨б╨Я╨а╨Р╨Т╨Ы╨Х╨Э ╨С╨Р╨У: ╨б╨╗╨╛╨▓╨░╤А╤М match_data ╤В╨╡╨┐╨╡╤А╤М ╨▓╤Л╨╜╨╡╤Б╨╡╨╜ ╨Ш╨Ч ╨▒╨╗╨╛╨║╨░ else ╨╕ ╨┤╨╛╤Б╤В╤Г╨┐╨╡╨╜ ╨Т╨б╨Х╨У╨Ф╨Р
+            # ❗ ВНИМАНИЕ: следующий блок else: match_data формируется ТОЛЬКО в блоке else и ДОСТУПЕН там
             match_data = {
                 "home_team": home_team,
                 "away_team": away_team,
@@ -357,7 +357,7 @@ async def run_pipeline():
         logger.error(f"тЭМ ╨Ъ╤А╨╕╤В╨╕╤З╨╡╤Б╨║╨░╤П ╨╛╤И╨╕╨▒╨║╨░ ╨▓ ╨┐╨░╨╣╨┐╨╗╨░╨╣╨╜╨╡: {e}")
         return 0
     finally:
-        # ЁЯЫбя╕П ╨У╨Р╨а╨Р╨Э╨в╨Ш╨а╨Ю╨Т╨Р╨Э╨Э╨Ю╨Х ╨Ч╨Р╨Ъ╨а╨л╨в╨Ш╨Х: ╨б╨╡╤Б╤Б╨╕╨╕ ╨╖╨░╨║╤А╨╛╤О╤В╤Б╤П ╨┐╤А╨╕ ╨╗╤О╨▒╨╛╨╝ ╨╕╤Б╤Е╨╛╨┤╨╡
+        # ГРАНИЧНОЕ ЗАКРЫТИЕ: сессии закрываются при выходе
         if publisher:
             await publisher.close()
         if db and hasattr(db, 'close'):
@@ -510,7 +510,7 @@ async def main():
         config = uvicorn.Config(web_app, host="0.0.0.0", port=8000, log_level="warning", access_log=False)
         server = uvicorn.Server(config)
         asyncio.create_task(server.serve())
-        logger.info("ЁЯМР ╨Т╨╡╨▒-╤Б╨░╨╣╤В ╤Г╤Б╨┐╨╡╤И╨╜╨╛ ╨╖╨░╨┐╤Г╤Й╨╡╨╜ ╨╜╨░ http://0.0.0.0:8000")
+        logger.info("🌐 Веб-сайт запущен на http://0.0.0.0:8000")
     except Exception as e:
         logger.warning(f"тЪая╕П ╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╤Г╤Б╤В╨╕╤В╤М ╨▓╨╡╨▒-╤Б╨╡╤А╨▓╨╡╤А: {e}")
 
@@ -586,7 +586,7 @@ async def main():
     except Exception as e:
         logger.warning(f"тЪая╕П ╨Ю╤И╨╕╨▒╨║╨░ ╤Г╨┤╨░╨╗╨╡╨╜╨╕╤П ╨▓╨╡╨▒╤Е╤Г╨║╨░: {e}")
 
-    logger.info("ЁЯдЦ SportPredict AI ╨╖╨░╨┐╤Г╤Й╨╡╨╜ ╨╕ ╨│╨╛╤В╨╛╨▓ ╨║ ╤А╨░╨▒╨╛╤В╨╡. ╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡: 8:00 ╨Ь╨б╨Ъ ╨╡╨╢╨╡╨┤╨╜╨╡╨▓╨╜╨╛.")
+    logger.info("✅ SportPredict AI запущен и готов к работе. Расписание: 8:00 МСК ежедневно.")
     
     try:
         await dp.start_polling(publisher.bot)
