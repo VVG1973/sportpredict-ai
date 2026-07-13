@@ -1,8 +1,8 @@
 """
 Публикатор прогнозов в Telegram каналы
-- Обычный канал: 1 бесплатный прогноз + AI-комментарий + кнопка купить за 50₽
-- VIP канал: 5 бесплатных прогнозов + AI-комментарий + кнопка купить за 50₽
-- Экспрессы: на других матчах + AI-комментарий (199₽/299₽)
+- Обычный канал: 1 прогноз (один рынок) + кнопка "Купить ещё за 50₽"
+- VIP канал: 5 прогнозов (один рынок каждый) + кнопка "Купить ещё за 50₽"
+- Экспрессы: на других матчах (199₽/299₽)
 - Все посты с кнопками букмекеров
 """
 import logging
@@ -102,40 +102,13 @@ def create_bookmakers_keyboard() -> "InlineKeyboardMarkup":
 def _create_buy_vip_keyboard() -> "InlineKeyboardMarkup":
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data="buy_single")],
+        [InlineKeyboardButton(text="💰 Купить ещё прогноз — 50₽", callback_data="buy_single")],
         [InlineKeyboardButton(text="👑 VIP-подписка — от 99₽/день", callback_data="vip_menu")],
     ])
 
 
-def _format_markets(prediction: dict) -> str:
-    lines = []
-    total = prediction.get("total", {})
-    both = prediction.get("both_scored", {})
-    handicap = prediction.get("handicap", {})
-
-    if isinstance(total, dict) and total.get("prediction"):
-        lines.append(f"⚽ Тотал: <b>{total['prediction']}</b>")
-    elif isinstance(total, str) and total:
-        lines.append(f"⚽ Тотал: <b>{total}</b>")
-
-    if isinstance(both, dict) and both.get("prediction"):
-        lines.append(f"🥅 Обе забьют: <b>{both['prediction']}</b>")
-    elif isinstance(both, str) and both:
-        lines.append(f"🥅 Обе забьют: <b>{both}</b>")
-
-    if isinstance(handicap, dict) and handicap.get("prediction"):
-        lines.append(f"📊 Фора: <b>{handicap['prediction']}</b>")
-    elif isinstance(handicap, str) and handicap:
-        lines.append(f"📊 Фора: <b>{handicap}</b>")
-
-    return "\n".join(lines)
-
-
-# ═══════════════════════════════════════════════════════
-# AI-КОММЕНТАРИЙ К ПРОГНОЗУ
-# ═══════════════════════════════════════════════════════
 def generate_ai_commentary(prediction: dict) -> str:
-    """Генерирует AI-комментарий к прогнозу на основе данных матча и модели"""
+    """Генерирует AI-комментарий к прогнозу"""
     match = prediction.get("match", {})
     pred = prediction.get("prediction", "П1")
     conf = prediction.get("confidence", 0.5)
@@ -144,73 +117,75 @@ def generate_ai_commentary(prediction: dict) -> str:
     away = to_russian_name(match.get("away_team", ""))
     sport = match.get("sport", "⚽ Футбол")
 
-    # Анализ коэффициентов
-    total_inv = 0
-    home_prob = 0
-    away_prob = 0
-    if odds > 0:
-        # Если есть полные коэффициенты
-        home_odds = prediction.get("B365H", odds)
-        away_odds = prediction.get("B365A", 2.0)
-        if home_odds > 0 and away_odds > 0:
-            total_inv = (1/home_odds) + (1/away_odds) + (1/3.0)  # Примерная ничья
-            home_prob = (1/home_odds) / total_inv if total_inv > 0 else 0.4
-            away_prob = (1/away_odds) / total_inv if total_inv > 0 else 0.4
-
-    # Генерируем комментарий
     comments = []
 
-    # Анализ фаворита
-    if pred in ["П1", "H"]:
-        if home_prob > 0.55:
-            comments.append(f"📊 {home} — явный фаворит (вероятность победы {home_prob:.0%})")
-        elif home_prob > 0.45:
-            comments.append(f"📊 {home} имеет небольшое преимущество дома")
-        else:
-            comments.append(f"📊 Модель видит стоимость в ставке на {home}")
+    home_odds = prediction.get("B365H", odds)
+    away_odds = prediction.get("B365A", 2.0)
+    if home_odds > 0 and away_odds > 0:
+        total_inv = (1/home_odds) + (1/away_odds) + (1/3.0)
+        home_prob = (1/home_odds) / total_inv if total_inv > 0 else 0.4
+        away_prob = (1/away_odds) / total_inv if total_inv > 0 else 0.4
 
-        # Фактор домашнего поля
-        sport_lower = sport.lower()
-        if any(s in sport_lower for s in ["футбол", "football", "хоккей", "hockey"]):
-            comments.append("🏠 Фактор домашнего поля усиливает позицию")
+        if pred in ["П1", "H"]:
+            if home_prob > 0.55:
+                comments.append(f"📊 {home} — явный фаворит (вероятность {home_prob:.0%})")
+            elif home_prob > 0.45:
+                comments.append(f"📊 {home} имеет небольшое преимущество дома")
+            else:
+                comments.append(f"📊 Модель видит стоимость в ставке на {home}")
+        elif pred in ["П2", "A"]:
+            if away_prob > 0.55:
+                comments.append(f"📊 {away} — сильный гость (вероятность {away_prob:.0%})")
+            else:
+                comments.append(f"📊 Модель видит потенциал в {away}")
 
-    elif pred in ["П2", "A"]:
-        if away_prob > 0.55:
-            comments.append(f"📊 {away} — сильный гость (вероятность {away_prob:.0%})")
-        else:
-            comments.append(f"📊 Модель видит потенциал в {away}")
-
-    # Анализ коэффициентов
     if odds > 2.5:
         comments.append(f"💰 Высокий коэффициент ({odds:.2f}) — хорошее соотношение риск/прибыль")
     elif odds < 1.5:
         comments.append(f"💰 Низкий коэффициент ({odds:.2f}) — высокая уверенность")
 
-    # Уверенность
     if conf > 0.75:
         comments.append(f"🎯 Высокая уверенность модели ({conf:.0%})")
     elif conf > 0.60:
         comments.append(f"🎯 Умеренная уверенность ({conf:.0%})")
 
-    # Value bet
     outcome_data = prediction.get("outcome", {})
     if outcome_data.get("is_value_bet"):
         value_pct = outcome_data.get('value', 0)
         comments.append(f"🔥 Value Bet: модель оценивает шанс на {abs(value_pct):.0%} выше рынка")
 
-    # Дополнительные рынки
-    total_pred = prediction.get("total", {})
-    if isinstance(total_pred, dict) and total_pred.get("prediction"):
-        comments.append(f"⚽ Тотал: {total_pred['prediction']}")
-
-    both_pred = prediction.get("both_scored", {})
-    if isinstance(both_pred, dict) and both_pred.get("prediction"):
-        comments.append(f"🥅 Обе забьют: {both_pred['prediction']}")
-
     if not comments:
         comments.append("🤖 Прогноз основан на статистическом анализе коэффициентов и исторических данных")
 
-    return "\n".join(comments[:4])  # Максимум 4 строки
+    return "\n".join(comments[:4])
+
+
+def _get_best_market(prediction: dict) -> tuple:
+    """Определяет лучший рынок для прогноза (один на матч)"""
+    total = prediction.get("total", {})
+    both = prediction.get("both_scored", {})
+    handicap = prediction.get("handicap", {})
+
+    # Проверяем дополнительные рынки по уверенности
+    markets = []
+
+    if isinstance(total, dict) and total.get("prediction") and total.get("confidence", 0) > 0.6:
+        markets.append(("total", "Тотал", total["prediction"], total.get("confidence", 0)))
+
+    if isinstance(both, dict) and both.get("prediction") and both.get("confidence", 0) > 0.6:
+        markets.append(("both_scored", "Обе забьют", both["prediction"], both.get("confidence", 0)))
+
+    if isinstance(handicap, dict) and handicap.get("prediction") and handicap.get("confidence", 0) > 0.6:
+        markets.append(("handicap", "Фора", handicap["prediction"], handicap.get("confidence", 0)))
+
+    # Если есть дополнительные рынки с высокой уверенностью — выбираем лучший
+    if markets:
+        markets.sort(key=lambda x: x[3], reverse=True)
+        return markets[0][0], markets[0][1], markets[0][2]
+
+    # Иначе — исход (П1/П2)
+    pred = prediction.get("prediction", "П1")
+    return "outcome", "Исход", pred
 
 
 class TelegramPublisher:
@@ -271,8 +246,7 @@ class TelegramPublisher:
         )
 
     # ═══════════════════════════════════════════════════════
-    # ОБЫЧНЫЙ КАНАЛ: 1 бесплатный прогноз + AI-комментарий
-    # + кнопка "Купить дополнительный за 50₽"
+    # ОБЫЧНЫЙ КАНАЛ: 1 прогноз (один рынок)
     # ═══════════════════════════════════════════════════════
     async def publish_to_channel(self, prediction: dict) -> bool:
         if not self.bot or not self.channel_id:
@@ -285,14 +259,11 @@ class TelegramPublisher:
         if self._is_duplicate(home, away, date_ru):
             return False
 
-        # AI-комментарий
+        market_type, market_name, market_value = _get_best_market(prediction)
+
         ai_commentary = generate_ai_commentary(prediction)
         if ai_commentary:
             ai_commentary = "\n" + ai_commentary + "\n"
-
-        markets_text = _format_markets(prediction)
-        if markets_text:
-            markets_text = "\n" + markets_text + "\n"
 
         emoji = SPORT_EMOJI.get(sport.lower().split()[0], "⚽")
 
@@ -301,10 +272,9 @@ class TelegramPublisher:
             f"{sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🔮 <b>Исход:</b> <b>{pred}</b>\n"
+            f"🎯 <b>{market_name}:</b> <b>{market_value}</b>\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
             f"💰 Коэффициент: <b>{odds:.2f}</b>"
-            f"{markets_text}"
             f"{ai_commentary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"💰 <b>Купить ещё прогнозы — 50₽/шт</b>"
@@ -312,22 +282,21 @@ class TelegramPublisher:
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data="buy_single")],
+            [InlineKeyboardButton(text="💰 Купить ещё прогноз — 50₽", callback_data="buy_single")],
         ])
         for row in create_bookmakers_keyboard().inline_keyboard:
             keyboard.inline_keyboard.append(row)
 
         try:
             await self._send(self.channel_id, text, keyboard)
-            logger.info(f"📢 Канал: {home} vs {away} — {pred}")
+            logger.info(f"📢 Канал: {home} vs {away} — {market_name}: {market_value}")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка публикации в канал: {e}")
             return False
 
     # ═══════════════════════════════════════════════════════
-    # VIP КАНАЛ: 5 бесплатных прогнозов + AI-комментарий
-    # + кнопка "Купить дополнительный за 50₽"
+    # VIP КАНАЛ: 5 прогнозов (один рынок каждый)
     # ═══════════════════════════════════════════════════════
     async def publish_to_vip(self, prediction: dict) -> bool:
         if not self.bot or not self.vip_channel_id:
@@ -340,67 +309,44 @@ class TelegramPublisher:
         if self._is_duplicate(home, away, date_ru):
             return False
 
-        # AI-комментарий
+        market_type, market_name, market_value = _get_best_market(prediction)
+
         ai_commentary = generate_ai_commentary(prediction)
         if ai_commentary:
             ai_commentary = "\n" + ai_commentary + "\n"
 
-        # Показываем рынки как "скрытые"
-        extra_hidden = []
-        total = prediction.get("total", {})
-        both = prediction.get("both_scored", {})
-        handicap = prediction.get("handicap", {})
-
-        if isinstance(total, dict) and total.get("prediction"):
-            extra_hidden.append("⚽ Тотал: ❓")
-        if isinstance(both, dict) and both.get("prediction"):
-            extra_hidden.append("🥅 Обе забьют: ❓")
-        if isinstance(handicap, dict) and handicap.get("prediction"):
-            extra_hidden.append("📊 Фора: ❓")
-
-        extra_text = ""
-        if extra_hidden:
-            extra_text = "\n" + "\n".join(extra_hidden) + "\n"
-
         emoji = SPORT_EMOJI.get(sport.lower().split()[0], "⚽")
 
-        # Тег "High-Confidence" для аномально высокой уверенности
-        high_conf_badge = ""
-        if conf >= 0.80:
-            high_conf_badge = "\n🔥 <b>HIGH-CONFIDENCE</b> — аномально высокая уверенность!\n"
-
         text = (
-            f"🔒 <b>VIP-ПРОГНОЗ</b>{high_conf_badge}\n"
+            f"🔒 <b>VIP-ПРОГНОЗ</b>\n\n"
             f"{emoji} {sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🔮 <b>Исход:</b> ❓❓❓\n"
+            f"🎯 <b>{market_name}:</b> ❓❓❓\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
             f"💰 Коэффициент: <b>{odds:.2f}</b>"
-            f"{extra_text}"
             f"{ai_commentary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 <b>Купить прогноз — 50₽</b>"
+            f"💰 <b>Купить ещё прогноз — 50₽</b>"
         )
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💰 Купить прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
+            [InlineKeyboardButton(text="💰 Купить ещё прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
         ])
         for row in create_bookmakers_keyboard().inline_keyboard:
             keyboard.inline_keyboard.append(row)
 
         try:
             await self._send(self.vip_channel_id, text, keyboard)
-            logger.info(f"💎 VIP: {home} vs {away} — замаскирован")
+            logger.info(f"💎 VIP: {home} vs {away} — {market_name}: ❓")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка публикации в VIP: {e}")
             return False
 
     # ═══════════════════════════════════════════════════════
-    # ЭКСПРЕСС: в ОБА канала + AI-комментарий
-    # На ДРУГИХ матчах, чем в каналах
+    # ЭКСПРЕСС: в ОБА канала
     # ═══════════════════════════════════════════════════════
     async def publish_express_to_both(self, express_events: list, total_odds: float, label: str) -> bool:
         if not self.bot:
@@ -425,7 +371,6 @@ class TelegramPublisher:
                 f"📅 {date_ru}\n"
                 f"💰 Коэф: <b>{odds_val:.2f}</b>\n\n"
             )
-            # AI-комментарий для каждого события
             ai_lines.append(f"• {home} — {away}: коэф {odds_val:.2f}")
 
         ai_text = ""
@@ -477,9 +422,7 @@ class TelegramPublisher:
             return False
 
         match, sport, home, away, pred, date_ru, conf, odds, league, _ = self._get_match_fields(prediction)
-        markets_text = _format_markets(prediction)
-        if markets_text:
-            markets_text = "\n" + markets_text + "\n"
+        market_type, market_name, market_value = _get_best_market(prediction)
 
         ai_commentary = generate_ai_commentary(prediction)
         if ai_commentary:
@@ -492,10 +435,9 @@ class TelegramPublisher:
             f"{emoji} {sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🔮 <b>Исход:</b> <b>{pred}</b>\n"
+            f"🎯 <b>{market_name}:</b> <b>{market_value}</b>\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
             f"💰 Коэффициент: <b>{odds:.2f}</b>"
-            f"{markets_text}"
             f"{ai_commentary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
             f"🎰 <b>Ставь у букмекера:</b>"
