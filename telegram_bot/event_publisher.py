@@ -149,11 +149,6 @@ def generate_ai_commentary(prediction: dict) -> str:
     elif conf > 0.60:
         comments.append(f"🎯 Умеренная уверенность ({conf:.0%})")
 
-    outcome_data = prediction.get("outcome", {})
-    if outcome_data.get("is_value_bet"):
-        value_pct = outcome_data.get('value', 0)
-        comments.append(f"🔥 Value Bet: модель оценивает шанс на {abs(value_pct):.0%} выше рынка")
-
     if not comments:
         comments.append("🤖 Прогноз основан на статистическом анализе коэффициентов и исторических данных")
 
@@ -322,24 +317,24 @@ class TelegramPublisher:
             f"{emoji} {sport} | <i>{league}</i>\n\n"
             f"🏟 <b>{home}</b> vs <b>{away}</b>\n"
             f"📅 {date_ru}\n\n"
-            f"🎯 <b>{market_name}:</b> ❓❓❓\n"
+            f"🎯 <b>{market_name}:</b> <b>{market_value}</b>\n"
             f"📊 Уверенность: <b>{conf:.0%}</b>\n"
             f"💰 Коэффициент: <b>{odds:.2f}</b>"
             f"{ai_commentary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 <b>Купить ещё прогноз — 50₽</b>"
+            f"💰 <b>Купить дополнительный прогноз — 50₽</b>"
         )
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💰 Купить ещё прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
+            [InlineKeyboardButton(text="💰 Купить дополнительный прогноз — 50₽", callback_data=f"buy_single:{fixture_id}")],
         ])
         for row in create_bookmakers_keyboard().inline_keyboard:
             keyboard.inline_keyboard.append(row)
 
         try:
             await self._send(self.vip_channel_id, text, keyboard)
-            logger.info(f"💎 VIP: {home} vs {away} — {market_name}: ❓")
+            logger.info(f"💎 VIP: {home} vs {away} — {market_name}: {market_value}")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка публикации в VIP: {e}")
