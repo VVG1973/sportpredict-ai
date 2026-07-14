@@ -740,3 +740,67 @@ async def process_buy_express(callback: CallbackQuery):
 
     await service.close()
     await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("buy_single"))
+async def process_buy_single(callback: CallbackQuery):
+    """Обработка покупки одного прогноза за 50₽"""
+    from telegram_bot.vip_manager import CryptoBotService, SubscriptionManager
+
+    user_id = callback.from_user.id
+    username = callback.from_user.username or "unknown"
+
+    service = CryptoBotService()
+    manager = SubscriptionManager()
+    await manager.init()
+
+    try:
+        invoice = await service.create_invoice(amount=50, description="Один VIP-прогноз")
+
+        if invoice:
+            await manager.save_invoice(
+                invoice_id=invoice["invoice_id"],
+                user_id=user_id,
+                username=username,
+                plan="single_prediction",
+                amount=50
+            )
+
+            await callback.message.answer(
+                f"💳 <b>Оплата прогноза</b>\n\n"
+                f"💰 Сумма: 50 ₽\n\n"
+                f"🔗 <a href='{invoice['pay_url']}'>👉 ОПЛАТИТЬ</a>\n\n"
+                f"⏳ После оплаты прогноз с исходом придёт автоматически.",
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+        else:
+            await callback.message.answer("❌ Не удалось создать инвойс. Попробуйте позже.")
+
+    except Exception as e:
+        logger.error(f"Ошибка buy_single: {e}")
+        await callback.message.answer(f"❌ Ошибка: {e}")
+
+    await service.close()
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "vip_menu")
+async def show_vip_menu(callback: CallbackQuery):
+    """Показать меню VIP-подписки"""
+    text = (
+        "👑 <b>VIP-ПОДПИСКА</b>\n\n"
+        "🔥 Доступ к закрытому VIP-каналу\n"
+        "📊 5 эксклюзивных прогнозов в день\n"
+        "🎯 Точность VIP-прогнозов: 70%+\n\n"
+        "💰 <b>Выберите период:</b>"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎫 1 день — 99₽", callback_data="vip:day")],
+        [InlineKeyboardButton(text="📅 Неделя — 499₽", callback_data="vip:week")],
+        [InlineKeyboardButton(text="🗓 Месяц — 1499₽", callback_data="vip:month")],
+        [InlineKeyboardButton(text="👑 3 мес — 3499₽", callback_data="vip:quarter")],
+    ])
+
+    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()

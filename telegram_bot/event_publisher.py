@@ -140,9 +140,12 @@ def generate_ai_commentary(prediction: dict) -> str:
                 comments.append(f"📊 Модель видит потенциал в {away}")
 
     if odds > 2.5:
-        comments.append(f"💰 Высокий коэффициент ({odds:.2f}) — хорошее соотношение риск/прибыль")
+        comments.append(f"💰 Коэффициент {odds:.2f} — потенциально выгодная ставка")
     elif odds < 1.5:
-        comments.append(f"💰 Низкий коэффициент ({odds:.2f}) — высокая уверенность")
+        if conf > 0.70:
+            comments.append(f"💰 Коэффициент {odds:.2f} — фаворит с высокой уверенностью")
+        else:
+            comments.append(f"💰 Коэффициент {odds:.2f} — ожидается уверенная победа")
 
     if conf > 0.75:
         comments.append(f"🎯 Высокая уверенность модели ({conf:.0%})")
