@@ -16,7 +16,6 @@ async def _get_db():
     """Создаёт и инициализирует подключение к БД"""
     from database.db import Database
     db = await _get_db()
-    await db.init()
     return db
 
 
@@ -175,7 +174,6 @@ async def btn_admin_stats(message: Message):
     
     from database.db import Database
     db = await _get_db()
-    await db.init()
     stats = await db.get_stats()
     await db.close()
     
@@ -243,13 +241,9 @@ async def btn_stats2(message: Message):
 @admin_router.message(F.text == "❤️ Мои команды")
 async def btn_myteams(message: Message):
     """Мои команды (для всех)"""
-    from database.db import Database
-    
     user_id = message.from_user.id
     db = await _get_db()
-    await db.init()
     teams = await db.get_user_follows(user_id)
-    await db.close()
     
     if teams:
         teams_text = "\n".join([f"❤️ {t}" for t in teams])
@@ -362,7 +356,6 @@ async def unfollow_from_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     db = await _get_db()
-    await db.init()
     await db.unfollow_team(user_id, team_name)
     teams = await db.get_user_follows(user_id)
     await db.close()
@@ -412,7 +405,6 @@ async def cmd_stats(message: Message):
     
     from database.db import Database
     db = await _get_db()
-    await db.init()
     stats = await db.get_stats()
     await db.close()
     
@@ -535,13 +527,10 @@ async def cmd_unfollow(message: Message):
 
 @admin_router.message(Command("myteams"))
 async def cmd_myteams(message: Message):
-    from database.db import Database
-    
+    """Показать избранные команды"""
     user_id = message.from_user.id
     db = await _get_db()
-    await db.init()
     teams = await db.get_user_follows(user_id)
-    await db.close()
     
     menu = get_menu_for_user(user_id)
     if teams:
@@ -568,7 +557,6 @@ async def cmd_mystats(message: Message):
     username = message.from_user.username or message.from_user.full_name
     
     db = await _get_db()
-    await db.init()
     stats = await db.get_user_stats(user_id)
     await db.close()
     
