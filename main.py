@@ -570,7 +570,21 @@ async def main():
 
     scheduler.add_job(check_expired_vip, "interval", hours=1, next_run_time=datetime.now(), id="vip_checker")
     scheduler.add_job(check_crypto_payments, "interval", seconds=30, next_run_time=datetime.now(), id="crypto_checker")
-    
+
+    # Ежедневный сбор данных в 6:00 MSK
+    async def collect_daily_data():
+        """Ежедневный сбор исторических данных для хоккея и тенниса"""
+        try:
+            logger.info("📥 Начинаю ежедневный сбор данных...")
+            from scripts.collect_hockey_tennis import HockeyTennisCollector
+            collector = HockeyTennisCollector()
+            await collector.collect_all()
+            logger.info("✅ Ежедневный сбор данных завершён")
+        except Exception as e:
+            logger.error(f"❌ Ошибка ежедневного сбора данных: {e}")
+
+    scheduler.add_job(collect_daily_data, "cron", hour=6, minute=0, id="daily_data_collector")
+
     scheduler.start()
 
     # ╨Ш╨╜╨╕╤Ж╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╤П Aiogram Bot & Dispatcher
